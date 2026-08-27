@@ -36,6 +36,9 @@ Issues = "https://github.com/Hinanawiii/hearthstone-research-lab/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"cardlab.authoring" = ["static/*.html", "static/*.js", "static/*.css"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

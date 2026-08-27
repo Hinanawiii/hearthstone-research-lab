@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CardLab 研究提案审核</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">CardLab Research Governance</p>
+        <h1>研究提案审核</h1>
+        <p class="subtitle">这里只冻结问题、证据和人工决定，不运行训练或探针。</p>
+      </div>
+      <nav class="header-actions">
+        <a class="button-link secondary" href="/">返回制卡澄清台</a>
+        <button id="new-proposal-button">登记提案</button>
+      </nav>
+    </header>
+
+    <main class="research-main">
+      <aside>
+        <div class="aside-title">
+          <h2>提案队列</h2>
+          <button id="refresh-proposals" class="quiet">刷新</button>
+        </div>
+        <p id="proposal-count" class="muted"></p>
+        <div id="proposal-list" class="card-list"></div>
+      </aside>
+
+      <section id="proposal-empty" class="empty-state">
+        <div>
+          <span class="empty-icon">?</span>
+          <h2>尚未选择研究提案</h2>
+          <p>AI 提案必须经过反方审查和人工批准，之后才可以定义研究牌池。</p>
+        </div>
+      </section>
+
+      <section id="proposal-detail" class="detail hidden">
+        <div class="detail-heading">
+          <div>
+            <p id="proposal-id" class="eyebrow"></p>
+            <h2 id="proposal-title"></h2>
+            <p id="proposal-question" class="source-text"></p>
+          </div>
+          <div id="proposal-status" class="gate-badge"></div>
+        </div>
+
+        <article class="question proposal-body">
+          <h3>为什么值得研究</h3>
+          <p id="proposal-rationale"></p>
+          <h3>来源与先验</h3>
+          <ul id="proposal-evidence" class="ai-sources"></ul>
+          <div id="critic-review" class="review-note hidden"></div>
+          <div id="human-review" class="review-note hidden"></div>
+        </article>
+
+        <article class="question">
+          <h3>审核操作</h3>
+          <p id="proposal-next-step" class="muted"></p>
+          <label>审核者<input id="review-actor" value="human" /></label>
+          <label>审核意见<textarea id="review-note" rows="4" placeholder="写明反方论证、批准范围或退回原因"></textarea></label>
+          <div id="proposal-actions" class="proposal-actions"></div>
+        </article>
+
+        <details class="history">
+          <summary>状态历史</summary>
+          <ol id="proposal-events"></ol>
+        </details>
+      </section>
+    </main>
+
+    <dialog id="proposal-dialog">
+      <form id="proposal-form">
+        <div class="dialog-heading">
+          <h2>登记研究提案</h2>
+          <button id="close-proposal-dialog" type="button" class="quiet">关闭</button>
+        </div>
+        <label>提案ID<input name="proposal_id" required placeholder="例如 modern-swing-window-v1" /></label>
+        <label>标题<input name="title" required /></label>
+        <label>研究问题<textarea name="question" rows="3" required></textarea></label>
+        <label>为什么值得研究<textarea name="rationale" rows="4" required></textarea></label>
+        <label>提案者<input name="proposed_by" value="research-llm" required /></label>
+        <button type="submit">保存草稿</button>
+      </form>
+    </dialog>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="/research.js"></script>
+  </body>
+</html>

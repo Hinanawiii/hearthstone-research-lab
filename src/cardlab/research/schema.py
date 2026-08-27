@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
+from .probe_catalog import PROBE_CATALOG
+
 GAME_INTERVENTIONS = {"curriculum", "feature", "policy_prior", "evaluation_probe"}
 ALL_INTERVENTIONS = GAME_INTERVENTIONS | {"trainer"}
 FEATURE_CATALOG = {
@@ -43,6 +45,7 @@ class Intervention:
 @dataclass(frozen=True)
 class Probe:
     name: str
+    executor: str
     question: str
     position_filter: str
     compared_choices: List[str]
@@ -133,8 +136,21 @@ def validate_proposal(proposal: ResearchProposal) -> None:
             "or evaluation probe derived from a game hypothesis"
         )
     for probe in proposal.probes:
+        if probe.executor not in PROBE_CATALOG:
+            raise ProposalError("unknown probe executor: {}".format(probe.executor))
         if len(probe.compared_choices) < 2:
             raise ProposalError("each probe must compare at least two game choices")
+        catalog = PROBE_CATALOG[probe.executor]
+        executable_choices = [
+            str(catalog["choice_a"]["description"]),
+            str(catalog["choice_b"]["description"]),
+        ]
+        if probe.compared_choices != executable_choices:
+            raise ProposalError(
+                "probe choices do not match executor {}: {}".format(
+                    probe.executor, executable_choices
+                )
+            )
     unknown_features = set(proposal.experiment.feature_flags) - FEATURE_CATALOG
     if unknown_features:
         raise ProposalError("unknown feature flags: {}".format(sorted(unknown_features)))
@@ -173,9 +189,10 @@ def proposal_schema_example() -> Dict[str, Any]:
         "probes": [
             {
                 "name": "probe-name",
+                "executor": "tempo_vs_draw_v1",
                 "question": "decision question",
                 "position_filter": "machine-checkable or precisely stated position filter",
-                "compared_choices": ["choice A", "choice B"],
+                "compared_choices": ["play Arcane Intellect", "play Chillwind Yeti"],
                 "metric": "outcome metric",
                 "expected_relation": "directional prediction",
             }

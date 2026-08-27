@@ -7,12 +7,14 @@
 - random, greedy, and neural policies;
 - structured LLM hypothesis protocol;
 - executable concept features, curricula, and policy priors;
-- baseline/candidate gate and theory ledger.
+- baseline/candidate gate and theory ledger;
+- multi-cycle evidence feedback with disjoint seed ranges;
+- the first paired decision-probe executor from cloned states.
 
 ## 0.2 — stronger experimental validity
 
 - exact replay files and action-by-action replay verification;
-- paired decision probes from cloned states;
+- a broader catalog of paired decision probes;
 - confidence intervals and sequential-testing limits;
 - invariant and property-based tests for the engine;
 - a search baseline and stronger imperfect-information opponent;
@@ -34,4 +36,3 @@
 - comparison between language-derived hypotheses and discovery from simulation alone;
 - sharp stress environments inspired by highly combinatorial trading-card games, without treating
   them as the default benchmark.
-

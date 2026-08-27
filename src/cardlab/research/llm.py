@@ -14,7 +14,9 @@ form a falsifiable theory about strategic play, and design a controlled interven
 not to act as a generic neural-network technician. A proposal that only changes an optimizer,
 learning rate, layer count, batch size, or training duration is invalid. Connect rules to a game
 mechanism, make directional predictions, name evidence that could refute you, and compare real
-in-game choices in at least one probe. Return exactly one JSON object matching the schema."""
+in-game choices in at least one executable probe from the supplied catalog. Review the prior
+research record: refine, replace, or explicitly replicate earlier work, but do not repeat an
+inconclusive experiment unchanged. Return exactly one JSON object matching the schema."""
 
 
 class ResearchBackend(Protocol):
@@ -75,10 +77,11 @@ class MockResearchBackend:
                 "probes": [
                     {
                         "name": "tempo-vs-draw-when-behind",
+                        "executor": "tempo_vs_draw_v1",
                         "question": "Should the player draw now or develop a minion while behind on board?",
                         "position_filter": "turn 3-7; health > 12; enemy board attack gap >= 3; "
                         "Arcane Intellect and an affordable minion in hand",
-                        "compared_choices": ["play Arcane Intellect", "play the highest-health affordable minion"],
+                        "compared_choices": ["play Arcane Intellect", "play Chillwind Yeti"],
                         "metric": "paired two-turn damage taken, then terminal win rate",
                         "expected_relation": "develop-first takes less damage; win-rate gain is largest at attack gap >= 5",
                     }

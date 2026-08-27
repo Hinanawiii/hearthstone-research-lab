@@ -5,11 +5,14 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
+from .authoring.importer import import_current_standard
+from .authoring.server import serve_review_queue
+from .authoring.store import ReviewStore
 from .engine import play_game
 from .policy import GreedyPolicy, RandomPolicy
 from .research.ledger import append_ledger
 from .research.llm import MockResearchBackend, OpenAICompatibleBackend, run_research
-from .research.loop import run_autoresearch
+from .research.loop import run_research_campaign
 from .research.packet import build_research_packet, write_packet
 from .specialist.network import NeuralPolicy, load_checkpoint
 from .specialist.train import TrainingConfig, evaluate_policy, train_self_play, write_report
@@ -49,16 +52,34 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--output", type=Path, default=Path("runs/evaluation.json"))
 
     autoresearch = sub.add_parser(
-        "autoresearch", help="run one LLM-hypothesis-to-specialist-evaluation cycle"
+        "autoresearch", help="run one or more LLM-guided research cycles"
     )
     autoresearch.add_argument(
         "--backend", choices=("mock", "openai-compatible"), default="mock"
     )
     autoresearch.add_argument("--episodes", type=int, default=100)
     autoresearch.add_argument("--eval-games", type=int, default=40)
+    autoresearch.add_argument("--cycles", type=int, default=1)
+    autoresearch.add_argument("--probe-samples", type=int, default=8)
     autoresearch.add_argument("--seed", type=int, default=100)
     autoresearch.add_argument("--acceptance-delta", type=float, default=0.02)
     autoresearch.add_argument("--run-dir", type=Path, default=Path("runs/autoresearch-001"))
+
+    review = sub.add_parser("review", help="serve the local card-authoring question queue")
+    review.add_argument(
+        "--db", type=Path, default=Path("runs/authoring/review.db"), help="SQLite database path"
+    )
+    review.add_argument("--port", type=int, default=8765)
+
+    import_standard = sub.add_parser(
+        "import-standard", help="import the current Standard card catalog into the review queue"
+    )
+    import_standard.add_argument(
+        "--db", type=Path, default=Path("runs/authoring/review.db"), help="SQLite database path"
+    )
+    import_standard.add_argument(
+        "--build", default="latest", help="HearthstoneJSON build number or latest"
+    )
     return parser
 
 
@@ -125,24 +146,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if args.backend == "mock"
             else OpenAICompatibleBackend.from_environment()
         )
-        report = run_autoresearch(
+        report = run_research_campaign(
             backend=backend,
             run_dir=args.run_dir,
+            cycles=args.cycles,
             episodes=args.episodes,
             evaluation_games=args.eval_games,
             seed=args.seed,
             acceptance_delta=args.acceptance_delta,
+            probe_samples=args.probe_samples,
         )
         print(
             json.dumps(
                 {
                     "run_dir": str(args.run_dir),
-                    "result": report["result"],
-                    "evidence": report["evidence"],
+                    "cycles_completed": report["cycles_completed"],
+                    "result": report["final_result"],
+                    "final_cycle": report["cycles"][-1],
                 },
                 sort_keys=True,
             )
         )
+        return 0
+    if args.command == "review":
+        serve_review_queue(args.db, port=args.port)
+        return 0
+    if args.command == "import-standard":
+        report = import_current_standard(ReviewStore(args.db), build=args.build)
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 0
     return 2
 

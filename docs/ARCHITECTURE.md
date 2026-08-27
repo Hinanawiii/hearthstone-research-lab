@@ -24,7 +24,8 @@ for the research director, not a training corpus of human game records.
 
 The backend receives a strict role prompt and must return a structured `ResearchProposal`. The
 proposal describes a game mechanism, predictions, falsifiers, probes, and an `experiment` block.
-The validator rejects malformed output, unknown controls, and trainer-only work.
+In a campaign, the next packet includes compact evidence from every completed cycle. The validator
+rejects malformed output, unknown controls, unknown probe executors, and trainer-only work.
 
 ### Audited control surface
 
@@ -39,15 +40,23 @@ code review and tests before an LLM may select it. This makes the first release 
 inspect while still allowing the LLM to change what the specialist perceives, practices, and
 initially prefers.
 
+Decision probes use the same catalog boundary. A proposal selects an audited executor that builds
+one position and two legal choices. The runner clones the position, forces each choice, and rolls
+both branches forward with matched seeds. It records two-turn damage, board-value gap, terminal
+score, and the baseline/candidate policy preference. Free-form probe prose is never executed as
+code.
+
 ### Specialist and gate
 
 The specialist scores each currently legal action from an information-safe observation. Self-play
-uses a policy/value objective. `run_autoresearch` trains a control-free baseline and a candidate
-under the same episode count and seed, evaluates both against random and greedy opponents, then
-records the result as accepted, rejected, or inconclusive.
+uses a policy/value objective. Every campaign cycle trains a fresh control-free baseline and a
+candidate under the same episode count and seed, evaluates both against random and greedy
+opponents, runs the proposal's decision probes, and records the result as accepted, rejected, or
+inconclusive. Cycle seeds do not overlap. The specialist checkpoint is not carried forward; the
+research evidence is.
 
-The gate measures an intervention, not its explanation. A separate decision-probe runner is needed
-before the causal hypothesis itself can receive strong support.
+The win-rate gate measures the intervention. Probe outcomes are separate evidence about the stated
+mechanism; neither result automatically proves the hypothesis.
 
 ## Trust boundaries
 
@@ -75,4 +84,3 @@ Generated files belong under `runs/` and are not source code.
 A game is determined by its seed and action sequence. PyTorch training is seeded on CPU, but exact
 floating-point reproduction can still vary across PyTorch versions and hardware. Reports therefore
 record configuration and should be compared statistically, not by checkpoint bytes.
-

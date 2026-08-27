@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CardLab 制卡澄清台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">CardLab Authoring Review</p>
+        <h1>制卡澄清台</h1>
+        <p class="subtitle">AI先提问，人工异步回答；规则澄清完成后仍需人工批准，才进入制卡队列。</p>
+      </div>
+      <nav class="header-actions">
+        <a class="button-link secondary" href="/research.html">研究提案</a>
+        <button id="new-card-button" class="secondary">登记卡牌</button>
+      </nav>
+    </header>
+
+    <main>
+      <aside>
+        <div class="aside-title">
+          <h2>卡牌队列</h2>
+          <button id="refresh-button" class="quiet">刷新</button>
+        </div>
+        <div class="queue-filters">
+          <input id="card-search" type="search" placeholder="搜索名称、ID或系列" />
+          <select id="status-filter" aria-label="制卡状态">
+            <option value="all">全部状态</option>
+            <option value="unasked">等待AI提问</option>
+            <option value="unresolved">等待人工回答</option>
+            <option value="verification">等待实机验证</option>
+            <option value="approval">等待人工批准</option>
+            <option value="ready">允许制卡</option>
+            <option value="implementation">等待实现核验</option>
+            <option value="research-ready">研究就绪</option>
+          </select>
+          <select id="set-filter" aria-label="卡牌系列">
+            <option value="all">全部系列</option>
+          </select>
+          <p id="filter-summary"></p>
+        </div>
+        <div id="card-list" class="card-list"></div>
+      </aside>
+
+      <section id="empty-state" class="empty-state">
+        <div>
+          <span class="empty-icon">?</span>
+          <h2>选择一张卡牌开始审核</h2>
+          <p>问题和答案会保存在本地SQLite数据库中，不会自动上传。</p>
+        </div>
+      </section>
+
+      <section id="detail" class="detail hidden">
+        <div class="detail-heading">
+          <div>
+            <p id="card-id" class="eyebrow"></p>
+            <h2 id="card-name"></h2>
+            <p id="card-metadata" class="card-metadata"></p>
+            <p id="source-text" class="source-text"></p>
+          </div>
+          <div id="gate-badge" class="gate-badge"></div>
+        </div>
+
+        <div class="gate-panel">
+          <div>
+            <span>制卡门禁</span>
+            <strong id="gate-summary"></strong>
+            <small id="implementation-summary"></small>
+          </div>
+          <div class="gate-actions">
+            <button id="generation-approval-button" class="secondary hidden"></button>
+            <button id="interview-button"></button>
+          </div>
+        </div>
+
+        <div class="question-toolbar">
+          <div>
+            <h3>澄清问题</h3>
+            <p id="question-summary"></p>
+          </div>
+          <button id="add-question-button" class="secondary">新增问题</button>
+        </div>
+        <div id="question-list" class="question-list"></div>
+      </section>
+    </main>
+
+    <dialog id="card-dialog">
+      <form id="card-form">
+        <div class="dialog-heading">
+          <h2>登记卡牌</h2>
+          <button id="close-card-dialog" type="button" class="quiet">关闭</button>
+        </div>
+        <label>卡牌ID<input name="card_id" required placeholder="例如 CAP_805" /></label>
+        <label>名称<input name="name" required placeholder="例如 灵质处决" /></label>
+        <label>原始文本<textarea name="source_text" rows="4"></textarea></label>
+        <button type="submit">保存</button>
+      </form>
+    </dialog>
+
+    <dialog id="question-dialog">
+      <form id="question-form">
+        <div class="dialog-heading">
+          <h2>新增澄清问题</h2>
+          <button id="close-question-dialog" type="button" class="quiet">关闭</button>
+        </div>
+        <label>类别<input name="category" value="interaction" required /></label>
+        <label>具体局面与问题<textarea name="prompt" rows="5" required></textarea></label>
+        <label>为什么会改变实现<textarea name="rationale" rows="3"></textarea></label>
+        <label>提问者<input name="asked_by" value="llm" /></label>
+        <label class="check"><input name="blocking" type="checkbox" checked />回答前阻止制卡</label>
+        <button type="submit">加入队列</button>
+      </form>
+    </dialog>
+
+    <template id="question-template">
+      <article class="question">
+        <div class="question-heading">
+          <div>
+            <span class="category"></span>
+            <span class="question-state"></span>
+          </div>
+          <span class="asked-by"></span>
+        </div>
+        <h4 class="prompt"></h4>
+        <p class="rationale"></p>
+        <div class="current-answer"></div>
+        <section class="ai-assessment hidden">
+          <div class="ai-assessment-heading">
+            <strong>AI 联网研究候选</strong>
+            <span class="ai-assessment-state"></span>
+          </div>
+          <p class="ai-candidate-answer"></p>
+          <p class="ai-candidate-reasoning"></p>
+          <ul class="ai-sources"></ul>
+          <p class="ai-gate-note">此内容不影响制卡门禁，采纳前仍需人工核对。</p>
+          <button type="button" class="adopt-ai secondary">填入人工答案</button>
+          <details class="ai-history hidden">
+            <summary>AI 研究历史</summary>
+            <ol></ol>
+          </details>
+        </section>
+        <form class="answer-form">
+          <textarea name="answer" rows="3" required placeholder="记录观察结果、规则判断或需要验证的步骤"></textarea>
+          <div class="answer-actions">
+            <input name="respondent" value="human" aria-label="回答者" />
+            <button type="submit">保存答案</button>
+            <button type="button" class="verify secondary">需要实机验证</button>
+          </div>
+        </form>
+        <details class="history">
+          <summary>历史记录</summary>
+          <ol></ol>
+        </details>
+      </article>
+    </template>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

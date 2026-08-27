@@ -35,8 +35,11 @@ python -m pip install -e '.[train,dev]'
 cardlab simulate --games 4 --seed 1
 cardlab packet --games 12 --output runs/research-packet.json
 cardlab propose --backend mock --output runs/proposal.json
-cardlab autoresearch --backend mock --episodes 20 --eval-games 8 \
+cardlab autoresearch --backend mock --cycles 2 --episodes 20 --eval-games 8 \
+  --probe-samples 4 \
   --run-dir runs/first-cycle
+cardlab import-standard --db runs/authoring/review.db --build latest
+cardlab review --db runs/authoring/review.db --port 8765
 ```
 
 `mock` 后端只用于测试协议，并不是真正的 LLM。接入兼容 OpenAI Chat Completions 的接口：
@@ -45,10 +48,18 @@ cardlab autoresearch --backend mock --episodes 20 --eval-games 8 \
 export CARDLAB_LLM_BASE_URL='https://your-endpoint.example/v1'
 export CARDLAB_LLM_API_KEY='...'
 export CARDLAB_LLM_MODEL='your-model'
-cardlab autoresearch --backend openai-compatible --episodes 100 --eval-games 40
+cardlab autoresearch --backend openai-compatible --cycles 3 \
+  --episodes 100 --eval-games 40 --probe-samples 8 \
+  --run-dir runs/llm-campaign-001
 ```
 
 不要提交 API Key。`runs/` 下的模型、研究包和提案默认不会进入 Git。
+
+`cardlab import-standard` 先把当前标准环境的卡牌目录同步到本地数据库，
+`cardlab review` 再在 <http://127.0.0.1:8765> 启动制卡澄清台。AI 可以先累积提交规则
+问题，人工再异步回答；问题解决后仍要人工批准，卡牌才会进入正式制卡队列。具体门禁和
+本地 API 见[制卡澄清台说明](docs/AUTHORING_REVIEW.zh-CN.md)。研究提案、有限牌池冻结和
+实验审批见[研究治理框架](docs/RESEARCH_GOVERNANCE.zh-CN.md)。
 
 ## 当前实现
 
@@ -57,7 +68,11 @@ cardlab autoresearch --backend openai-compatible --episodes 100 --eval-games 40
 - 法力、水晶临时增益、抽牌、疲劳、手牌与场面上限、嘲讽、冲锋、战斗、定向伤害、随机
   伤害、火焰冲击和幸运币；
 - 随机策略、透明的贪心基线和一个小型策略/价值网络；
-- LLM 研究数据包、结构化假说验证、可执行研究控制、同条件基线/候选评测和追加式理论账本。
+- LLM 研究数据包、结构化假说检查和可执行研究控制；基线与候选使用相同条件评测，成对
+  决策探针提供机制证据，上一轮结果会进入下一轮研究，理论账本只追加、不覆盖。
+- 本地制卡问题队列、追加式人工回答历史、人工生成批准和实现核验门禁；
+- 研究提案的反方审查、人工审批、有限牌池依赖冻结，以及冠军模型和实验谱系登记。该框架
+  目前只保存状态，不会自动运行训练或探针。
 
 解释实验结果前，请先阅读[架构说明](docs/ARCHITECTURE.md)、
 [研究协议](docs/RESEARCH_PROTOCOL.md)和[牌池契约](docs/CARD_POOL.md)。

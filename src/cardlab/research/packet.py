@@ -4,16 +4,21 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 from ..cards import CARD_POOL_VERSION, CARDS
 from ..engine import Game, play_game
 from ..model import ActionType
 from ..policy import GreedyPolicy, RandomPolicy
+from .probe_catalog import PROBE_CATALOG
 from .schema import FEATURE_CATALOG, PRIOR_CATALOG, SCENARIO_CATALOG
 
 
-def build_research_packet(games: int = 12, seed: int = 100) -> Dict[str, Any]:
+def build_research_packet(
+    games: int = 12,
+    seed: int = 100,
+    prior_research: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     records: List[Dict[str, Any]] = []
     greedy_wins = random_wins = draws = 0
     stranded_mana: List[float] = []
@@ -90,6 +95,7 @@ def build_research_packet(games: int = 12, seed: int = 100) -> Dict[str, Any]:
                 "feature_flags": sorted(FEATURE_CATALOG),
                 "curriculum_scenarios": sorted(SCENARIO_CATALOG),
                 "policy_priors": sorted(PRIOR_CATALOG),
+                "decision_probes": PROBE_CATALOG,
                 "note": "The experiment field may only select these audited controls.",
             },
             "protected_components": [
@@ -116,6 +122,14 @@ def build_research_packet(games: int = 12, seed: int = 100) -> Dict[str, Any]:
             "mean_stranded_mana_at_end_turn": mean(stranded_mana) if stranded_mana else 0.0,
         },
         "representative_games": records[: min(6, len(records))],
+        "prior_research": {
+            "cycle_count": len(prior_research or []),
+            "records": list(prior_research or []),
+            "instruction": (
+                "Use prior results to refine, replace, or deliberately replicate a hypothesis. "
+                "Do not repeat an inconclusive experiment unchanged."
+            ),
+        },
         "questions_for_researcher": [
             "When is face damage preferable to board control in this closed card pool?",
             "How should tempo be valued against card draw when fatigue is reachable?",
