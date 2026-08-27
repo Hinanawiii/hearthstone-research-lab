@@ -9,7 +9,7 @@ from ..model import Action
 from .features import ACTION_SIZE, STATE_SIZE, encode_action, encode_state
 
 try:
-    import torch
+    import torch  # type: ignore[import-not-found]
     from torch import Tensor, nn
 except ImportError:  # pragma: no cover - tested in the dependency-free CLI path
     torch = None  # type: ignore
