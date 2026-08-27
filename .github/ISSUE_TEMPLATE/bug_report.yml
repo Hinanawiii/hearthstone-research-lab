@@ -1,0 +1,34 @@
+name: Bug report
+description: Report incorrect rules, crashes, or reproducibility failures
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and why it follows from the declared contract.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include revision, command, seed, action sequence, and card-pool version.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: checkboxes
+    id: assets
+    attributes:
+      label: Contribution check
+      options:
+        - label: This report contains no credentials or proprietary game assets.
+          required: true
+

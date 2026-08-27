@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use CardLab in research, please cite this software."
+title: "Hearthstone Research Lab"
+type: software
+version: 0.1.0
+date-released: 2026-08-27
+authors:
+  - name: "CardLab contributors"
+license: MIT
+repository-code: "https://github.com/Hinanawiii/hearthstone-research-lab"
+abstract: >-
+  A limited-card-pool environment for LLM-guided game research and specialist self-play.
+keywords:
+  - reinforcement learning
+  - large language models
+  - self-play
+  - card games

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hearthstone-research-lab"
+version = "0.1.0"
+description = "A limited-card-pool Hearthstone research harness for LLM-guided game science and specialist self-play."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "CardLab contributors" }]
+keywords = ["reinforcement-learning", "llm", "self-play", "card-games", "hearthstone"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+train = ["torch>=2.1"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "build>=1.2"]
+
+[project.scripts]
+cardlab = "cardlab.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Hinanawiii/hearthstone-research-lab"
+Issues = "https://github.com/Hinanawiii/hearthstone-research-lab/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.9"
+packages = ["cardlab"]
+warn_return_any = true
+warn_unused_configs = true

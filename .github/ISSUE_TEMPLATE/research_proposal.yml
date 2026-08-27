@@ -1,0 +1,27 @@
+name: Research proposal
+description: Propose a falsifiable game hypothesis or audited control
+title: "[Research]: "
+labels: ["research"]
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Game hypothesis
+      description: State the claim, mechanism, and scope.
+    validations:
+      required: true
+  - type: textarea
+    id: prediction
+    attributes:
+      label: Prediction and falsifier
+      description: Say what should happen and what evidence would reject the claim.
+    validations:
+      required: true
+  - type: textarea
+    id: experiment
+    attributes:
+      label: Controlled experiment
+      description: Define choices, seeds, controls, opponent set, metric, and budget.
+    validations:
+      required: true
+
