@@ -19,6 +19,7 @@ class AuthoringServerTests(unittest.TestCase):
         store = ReviewStore(db_path)
         store.upsert_card("MODERN_001", "现代研究牌", "一个需要核验的现代效果。")
         store.set_interview_complete("MODERN_001", True)
+        self.store = store
         governance = ResearchGovernanceStore(db_path)
         handler = type(
             "TestReviewRequestHandler",
@@ -97,6 +98,25 @@ class AuthoringServerTests(unittest.TestCase):
         self.assertEqual(reviewed["proposal"]["status"], "critic_reviewed")
         proposals = self.request("/api/research/proposals")
         self.assertEqual(len(proposals["proposals"]), 1)
+
+    def test_bulk_generation_approval_route_is_idempotent(self) -> None:
+        approved = self.request(
+            "/api/cards/bulk-generation-approval",
+            {"reviewer": "human-reviewer", "note": "zero-question review"},
+        )
+        self.assertEqual(
+            approved["bulk_approval"],
+            {"approved_count": 1, "card_ids": ["MODERN_001"]},
+        )
+        self.assertTrue(self.store.get_card("MODERN_001")["ready_to_generate"])
+
+        repeated = self.request(
+            "/api/cards/bulk-generation-approval",
+            {"reviewer": "human-reviewer"},
+        )
+        self.assertEqual(
+            repeated["bulk_approval"], {"approved_count": 0, "card_ids": []}
+        )
 
 
 if __name__ == "__main__":

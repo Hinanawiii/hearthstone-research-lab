@@ -30,6 +30,9 @@ function toast(message, error = false) {
 
 function gateLabel(card) {
   if (card.ready_for_research) return "实现已核验";
+  if (card.ready_to_generate && card.implementation_status !== "not_started") {
+    return "等待实现核验";
+  }
   if (card.ready_to_generate) return "允许制卡";
   if (card.authoring_ready) return "等待人工批准";
   if (!card.question_count) return "等待AI提问";
@@ -38,11 +41,27 @@ function gateLabel(card) {
   return "等待人工回答";
 }
 
+function zeroQuestionApprovalCandidates() {
+  return state.cards.filter((card) => (
+    card.interview_complete
+    && card.question_count === 0
+    && !card.generation_approved
+  ));
+}
+
+function renderBulkApprovalButton() {
+  const button = $("#bulk-approve-zero-question-button");
+  const count = zeroQuestionApprovalCandidates().length;
+  button.textContent = `一键允许 ${count} 张无问题卡制卡`;
+  button.classList.toggle("hidden", count === 0);
+}
+
 async function loadCards(selectId = state.selectedCardId) {
   const payload = await api("/api/cards");
   state.cards = payload.cards;
   populateSetFilter();
   renderCards();
+  renderBulkApprovalButton();
   const target = selectId && state.cards.some((card) => card.card_id === selectId)
     ? selectId
     : state.cards[0]?.card_id;
@@ -145,6 +164,8 @@ function renderDetail() {
   badge.className = card.ready_to_generate ? "gate-badge ready" : "gate-badge";
   if (card.ready_for_research) {
     $("#gate-summary").textContent = "卡牌实现已核验，可加入待冻结研究牌池";
+  } else if (card.ready_to_generate && card.implementation_status !== "not_started") {
+    $("#gate-summary").textContent = "首版实现已生成，等待人工核验";
   } else if (card.ready_to_generate) {
     $("#gate-summary").textContent = "人工已批准，等待正式制卡与实现核验";
   } else if (card.authoring_ready) {
@@ -161,8 +182,45 @@ function renderDetail() {
   approvalButton.textContent = card.generation_approved ? "撤销制卡批准" : "人工批准制卡";
   approvalButton.className = card.generation_approved ? "secondary" : "";
   approvalButton.classList.toggle("hidden", !card.authoring_ready);
+  renderImplementationReview(card);
   $("#question-summary").textContent = `${card.answered_count}/${card.question_count} 已回答，${card.needs_verification_count} 项等待实机验证`;
   renderQuestions(card.questions);
+}
+
+function renderImplementationReview(card) {
+  const panel = $("#implementation-review");
+  const evidence = card.implementation_evidence || {};
+  const reviewDocument = evidence.scenario_document;
+  const scenario = reviewDocument && reviewDocument.scenario;
+  const visible = Boolean(
+    reviewDocument &&
+    reviewDocument.schema_version === "cardlab.authoring-review.v1" &&
+    scenario &&
+    scenario.before &&
+    scenario.after
+  );
+  panel.classList.toggle("hidden", !visible);
+  if (!visible) return;
+
+  $("#implementation-artifact").textContent = [
+    evidence.card_module ? `实现：${evidence.card_module}` : "",
+    evidence.artifact_path ? `JSON：${evidence.artifact_path}` : "",
+    evidence.summary_path ? `中文说明：${evidence.summary_path}` : "",
+  ].filter(Boolean).join(" · ");
+  $("#implementation-test-state").textContent = evidence.automated_tests || "等待自动测试";
+  $("#implementation-narrative").textContent = evidence.review_text_zh || "尚未生成中文说明";
+  $("#implementation-json").textContent = JSON.stringify(reviewDocument, null, 2);
+
+  const specialCases = scenario.special_cases || [];
+  const specialCasesPanel = $("#implementation-special-cases");
+  specialCasesPanel.classList.toggle("hidden", specialCases.length === 0);
+  const specialCaseList = $("#implementation-special-case-list");
+  specialCaseList.replaceChildren();
+  for (const specialCase of specialCases) {
+    const item = document.createElement("li");
+    item.textContent = specialCase.summary_zh;
+    specialCaseList.append(item);
+  }
 }
 
 function renderQuestions(questions) {
@@ -354,6 +412,37 @@ $("#generation-approval-button").addEventListener("click", async () => {
     await loadCards(state.selectedCardId);
   } catch (error) {
     toast(error.message, true);
+  }
+});
+
+$("#bulk-approve-zero-question-button").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const count = zeroQuestionApprovalCandidates().length;
+  if (!count) {
+    toast("当前没有可批量批准的无问题卡");
+    return;
+  }
+  const confirmed = window.confirm(
+    `确认允许 ${count} 张无问题卡进入制卡队列？\n\n`
+    + "只会处理已结束提问、问题数为 0 且尚未批准的卡牌。",
+  );
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    const payload = await api("/api/cards/bulk-generation-approval", {
+      method: "POST",
+      body: JSON.stringify({
+        reviewer: "human",
+        note: "通过审核台一键批准无问题卡",
+      }),
+    });
+    const approved = payload.bulk_approval.approved_count;
+    toast(`已允许 ${approved} 张无问题卡进入制卡队列`);
+    await loadCards(state.selectedCardId);
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
   }
 });
 

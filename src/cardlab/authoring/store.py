@@ -112,6 +112,14 @@ class ReviewStore:
                     imported_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS card_name_catalog (
+                    card_id TEXT PRIMARY KEY,
+                    name_zh TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    source_version TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS questions (
                     question_id TEXT PRIMARY KEY,
                     card_id TEXT NOT NULL REFERENCES cards(card_id),
@@ -172,6 +180,24 @@ class ReviewStore:
                 """
             )
             self._migrate_cards(connection)
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO card_name_catalog(
+                    card_id, name_zh, source_kind, source_version, updated_at
+                )
+                SELECT card_id, name, 'standard-source', source_version, imported_at
+                FROM source_cards
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO card_name_catalog(
+                    card_id, name_zh, source_kind, source_version, updated_at
+                )
+                SELECT card_id, name, 'review-queue', source_version, updated_at
+                FROM cards
+                """
+            )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cards_scope ON cards(in_scope, updated_at)"
             )
@@ -244,6 +270,65 @@ class ReviewStore:
             self._write_card(connection, record, timestamp)
         return self.get_card(str(record["card_id"]))
 
+    def upsert_card_names(
+        self,
+        names_zh: Mapping[str, str],
+        *,
+        source_kind: str,
+        source_version: str = "",
+    ) -> None:
+        normalized_kind = source_kind.strip()
+        if not normalized_kind:
+            raise ValueError("card name source kind is required")
+        prepared = []
+        for raw_card_id, raw_name in names_zh.items():
+            card_id = str(raw_card_id).strip()
+            name_zh = str(raw_name).strip()
+            if not card_id or not name_zh:
+                raise ValueError("card name catalog entries require card_id and name_zh")
+            prepared.append((card_id, name_zh))
+        timestamp = _now()
+        with self._connection() as connection:
+            for card_id, name_zh in prepared:
+                self._write_card_name(
+                    connection,
+                    card_id,
+                    name_zh,
+                    normalized_kind,
+                    source_version,
+                    timestamp,
+                )
+
+    def card_names_zh(self) -> Dict[str, str]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT card_id, name_zh FROM card_name_catalog ORDER BY card_id"
+            ).fetchall()
+        return {str(row["card_id"]): str(row["name_zh"]) for row in rows}
+
+    @staticmethod
+    def _write_card_name(
+        connection: sqlite3.Connection,
+        card_id: str,
+        name_zh: str,
+        source_kind: str,
+        source_version: str,
+        timestamp: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO card_name_catalog(
+                card_id, name_zh, source_kind, source_version, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(card_id) DO UPDATE SET
+                name_zh = excluded.name_zh,
+                source_kind = excluded.source_kind,
+                source_version = excluded.source_version,
+                updated_at = excluded.updated_at
+            """,
+            (card_id, name_zh, source_kind, source_version, timestamp),
+        )
+
     @staticmethod
     def _normalize_card_record(record: Mapping[str, Any]) -> Dict[str, Any]:
         card_id = str(record.get("card_id", "")).strip()
@@ -290,6 +375,14 @@ class ReviewStore:
         )
         changed = existing is None or any(
             existing[field] != record[field] for field in semantic_fields
+        )
+        ReviewStore._write_card_name(
+            connection,
+            str(record["card_id"]),
+            str(record["name"]),
+            str(record["source_kind"]),
+            str(record["source_version"]),
+            timestamp,
         )
         if existing is None:
             connection.execute(
@@ -398,6 +491,14 @@ class ReviewStore:
             connection.execute("UPDATE source_cards SET in_scope = 0")
 
             for record, collectible in prepared:
+                self._write_card_name(
+                    connection,
+                    str(record["card_id"]),
+                    str(record["name"]),
+                    "standard-source",
+                    source_version,
+                    timestamp,
+                )
                 connection.execute(
                     """
                     INSERT INTO source_cards(
@@ -614,6 +715,73 @@ class ReviewStore:
                 timestamp,
             )
         return self.get_card(card_id)
+
+    def approve_zero_question_cards(
+        self,
+        reviewer: str,
+        *,
+        note: str = "",
+    ) -> Dict[str, Any]:
+        """Approve every in-scope, completed card that has never raised a question."""
+        reviewer = reviewer.strip()
+        if not reviewer:
+            raise ValueError("generation approval requires a reviewer")
+        timestamp = _now()
+        approved_card_ids: List[str] = []
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT c.card_id
+                FROM cards c
+                WHERE c.in_scope = 1
+                  AND c.interview_complete = 1
+                  AND c.generation_approved = 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM questions q WHERE q.card_id = c.card_id
+                  )
+                ORDER BY c.card_id
+                """
+            ).fetchall()
+            for row in rows:
+                card_id = str(row["card_id"])
+                cursor = connection.execute(
+                    """
+                    UPDATE cards
+                    SET generation_approved = 1, generation_approved_by = ?,
+                        generation_approved_at = ?, implementation_status = 'not_started',
+                        implementation_reviewed_by = '', implementation_reviewed_at = NULL,
+                        implementation_evidence_json = '{}', updated_at = ?
+                    WHERE card_id = ?
+                      AND in_scope = 1
+                      AND interview_complete = 1
+                      AND generation_approved = 0
+                      AND NOT EXISTS (
+                          SELECT 1 FROM questions q WHERE q.card_id = cards.card_id
+                      )
+                    """,
+                    (reviewer, timestamp, timestamp, card_id),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                approved_card_ids.append(card_id)
+                self._record_workflow_event(
+                    connection,
+                    card_id,
+                    "generation_approved",
+                    reviewer,
+                    note,
+                    {
+                        "approved": True,
+                        "bulk": True,
+                        "eligibility": "interview_complete_and_zero_questions",
+                    },
+                    timestamp,
+                )
+        return {
+            "approved_count": len(approved_card_ids),
+            "card_ids": approved_card_ids,
+        }
 
     def set_implementation_status(
         self,

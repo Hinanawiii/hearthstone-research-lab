@@ -174,6 +174,13 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(HTTPStatus.CREATED, {"card": card})
                 return
+            if path == "/api/cards/bulk-generation-approval":
+                result = self.store.approve_zero_question_cards(
+                    str(payload.get("reviewer", "human")),
+                    note=str(payload.get("note", "")),
+                )
+                self._json(HTTPStatus.OK, {"bulk_approval": result})
+                return
             route = self._card_action_path(path)
             if route is not None:
                 card_id, action = route

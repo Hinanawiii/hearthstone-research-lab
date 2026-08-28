@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import random
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .cards import CARDS, default_deck
 from .model import (
@@ -36,10 +36,12 @@ class Game:
         seed: int = 0,
         decks: Optional[Tuple[List[str], List[str]]] = None,
         starting_player: int = 0,
+        card_registry: Optional[Mapping[str, CardDef]] = None,
     ) -> None:
         self.seed = seed
         self.rng = random.Random(seed)
         self._next_entity_id = 1
+        self.cards = dict(card_registry or CARDS)
         chosen = decks or (default_deck(), default_deck())
         self.state = GameState(
             players=[PlayerState(deck=list(chosen[0])), PlayerState(deck=list(chosen[1]))],
@@ -51,7 +53,7 @@ class Game:
 
     def _validate_decks(self) -> None:
         for deck in (player.deck for player in self.state.players):
-            unknown = [card_id for card_id in deck if card_id not in CARDS]
+            unknown = [card_id for card_id in deck if card_id not in self.cards]
             if unknown:
                 raise ValueError("unknown card ids: {}".format(sorted(set(unknown))))
 
@@ -80,7 +82,7 @@ class Game:
         actions: List[Action] = [Action.end_turn()]
 
         for hand_card in own.hand:
-            card = CARDS[hand_card.card_id]
+            card = self.cards[hand_card.card_id]
             if card.cost > own.mana + own.temporary_mana:
                 continue
             if card.card_type == CardType.MINION and len(own.board) >= 7:
@@ -147,7 +149,7 @@ class Game:
     def _play_card(self, actor: int, action: Action) -> None:
         player = self.state.players[actor]
         hand_card = self._find_hand_card(actor, action.source_id)
-        card = CARDS[hand_card.card_id]
+        card = self.cards[hand_card.card_id]
         self._spend_mana(player, card.cost)
         player.hand.remove(hand_card)
         if card.card_type == CardType.MINION:
@@ -190,6 +192,14 @@ class Game:
                     self._check_terminal()
                     if self.state.terminal:
                         break
+            elif effect.kind == "damage_all":
+                if effect.target != "enemy_characters":
+                    raise RuntimeError("unsupported damage_all target: {}".format(effect.target))
+                targets = self._enemy_characters(actor)
+                for target in targets:
+                    self._damage(target, effect.amount)
+                self._cleanup_deaths()
+                self._check_terminal()
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
 
@@ -368,4 +378,3 @@ def play_game(
     if not game.state.terminal:
         game.state.terminal_reason = "draw"
     return game
-

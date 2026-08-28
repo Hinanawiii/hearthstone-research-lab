@@ -15,6 +15,7 @@
       </div>
       <nav class="header-actions">
         <a class="button-link secondary" href="/research.html">研究提案</a>
+        <button id="bulk-approve-zero-question-button" class="secondary hidden"></button>
         <button id="new-card-button" class="secondary">登记卡牌</button>
       </nav>
     </header>
@@ -75,6 +76,26 @@
             <button id="interview-button"></button>
           </div>
         </div>
+
+        <section id="implementation-review" class="implementation-review hidden">
+          <div class="implementation-review-heading">
+            <div>
+              <h3>首版实现核验</h3>
+              <p id="implementation-artifact"></p>
+            </div>
+            <span id="implementation-test-state" class="mini-gate ready"></span>
+          </div>
+          <h4>中文核验说明</h4>
+          <pre id="implementation-narrative" class="implementation-narrative"></pre>
+          <section id="implementation-special-cases" class="implementation-special-cases hidden">
+            <h4>特殊情况标注</h4>
+            <ul id="implementation-special-case-list"></ul>
+          </section>
+          <details class="implementation-json-details">
+            <summary>查看固定格式 JSON</summary>
+            <pre id="implementation-json"></pre>
+          </details>
+        </section>
 
         <div class="question-toolbar">
           <div>

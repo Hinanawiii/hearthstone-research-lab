@@ -35,7 +35,8 @@ are intentionally outside the current scope.
 The page lets a reviewer register source text, inspect accumulated questions, append an answer,
 inspect AI research candidates and their sources, copy a candidate into the human answer form,
 mark a question as requiring a client probe, inspect answer history, and close or reopen the LLM's
-interview pass. Copying a candidate never saves it as a human answer.
+interview pass. It can also approve all completed, zero-question cards in one confirmed action.
+Copying a candidate never saves it as a human answer.
 
 ## Generation gate
 
@@ -51,6 +52,11 @@ Finishing the questions therefore does not start generation. A `needs_verificati
 unresolved, and even a zero-question card needs explicit approval. A new question, a semantic source
 change, a reopened interview, or a new human answer revokes prior generation approval and
 implementation readiness.
+
+The bulk action only selects in-scope cards whose interview is complete, whose question count is
+zero, and which are not already approved. Cards that ever raised a question remain subject to
+individual review, even after all answers are resolved. Each approved card receives its own workflow
+event.
 
 An external authoring agent may only claim cards with `ready_to_generate`. This repository currently
 provides the queue and enforceable gates, not an automatic authoring executor. The approval button
@@ -129,6 +135,21 @@ Content-Type: application/json
   "note": "Blocking questions are reviewed; generate the first implementation."
 }
 ```
+
+Approve every eligible zero-question card:
+
+```http
+POST /api/cards/bulk-generation-approval
+Content-Type: application/json
+
+{
+  "reviewer": "human-reviewer",
+  "note": "Reviewed the zero-question queue."
+}
+```
+
+The endpoint rechecks eligibility inside one transaction and returns the approved count and card
+IDs. Repeated calls do not create duplicate events.
 
 The generator and reviewers then record implementation transitions. `implementation_ready` requires
 review evidence:

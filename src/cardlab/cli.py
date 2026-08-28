@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from .authoring.importer import import_current_standard
+from .authoring.review_format import render_review_document_zh
 from .authoring.server import serve_review_queue
 from .authoring.store import ReviewStore
 from .engine import play_game
@@ -79,6 +80,19 @@ def _parser() -> argparse.ArgumentParser:
     )
     import_standard.add_argument(
         "--build", default="latest", help="HearthstoneJSON build number or latest"
+    )
+
+    render_review = sub.add_parser(
+        "render-authoring-review",
+        help="render a fixed-format authoring review JSON file as Chinese text without an LLM",
+    )
+    render_review.add_argument("--input", type=Path, required=True)
+    render_review.add_argument("--output", type=Path)
+    render_review.add_argument(
+        "--db",
+        type=Path,
+        default=Path("runs/authoring/review.db"),
+        help="card-name catalog database used to render Chinese names",
     )
     return parser
 
@@ -174,6 +188,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.command == "import-standard":
         report = import_current_standard(ReviewStore(args.db), build=args.build)
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return 0
+    if args.command == "render-authoring-review":
+        document = json.loads(args.input.read_text(encoding="utf-8"))
+        rendered = render_review_document_zh(document, ReviewStore(args.db).card_names_zh())
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(rendered, encoding="utf-8")
+        else:
+            print(rendered, end="")
         return 0
     return 2
 

@@ -195,6 +195,37 @@ class AuthoringReviewTests(unittest.TestCase):
         )
         self.assertFalse(revoked["ready_to_generate"])
 
+    def test_bulk_approval_only_includes_completed_zero_question_cards(self) -> None:
+        self.store.upsert_card("ZERO_002", "零问题卡", "抽一张牌。")
+        self.store.upsert_card("QUESTION_001", "有问题卡", "发现一张牌。")
+        self.store.upsert_card("INCOMPLETE_001", "未完成访谈卡", "造成1点伤害。")
+        self.store.set_interview_complete("CAP_805", True)
+        self.store.approve_generation("CAP_805", "human-reviewer")
+        self.store.set_interview_complete("ZERO_002", True)
+        self.store.add_questions(
+            "QUESTION_001",
+            [{"question_id": "pool", "prompt": "发现池包含哪些卡？"}],
+        )
+        self.store.record_answer("pool", "仅包含当前牌池。")
+        self.store.set_interview_complete("QUESTION_001", True)
+
+        result = self.store.approve_zero_question_cards(
+            "bulk-reviewer", note="zero-question review"
+        )
+
+        self.assertEqual(result, {"approved_count": 1, "card_ids": ["ZERO_002"]})
+        self.assertTrue(self.store.get_card("ZERO_002")["ready_to_generate"])
+        self.assertFalse(self.store.get_card("QUESTION_001")["generation_approved"])
+        self.assertFalse(self.store.get_card("INCOMPLETE_001")["generation_approved"])
+        event = self.store.get_card("ZERO_002")["workflow_events"][-1]
+        self.assertEqual(event["event_type"], "generation_approved")
+        self.assertEqual(event["actor"], "bulk-reviewer")
+        self.assertEqual(event["metadata"]["bulk"], True)
+
+        repeated = self.store.approve_zero_question_cards("bulk-reviewer")
+        self.assertEqual(repeated, {"approved_count": 0, "card_ids": []})
+        self.assertEqual(len(self.store.get_card("ZERO_002")["workflow_events"]), 1)
+
     def test_ai_can_recommend_client_verification_and_prompt_includes_evidence(self) -> None:
         self.store.add_questions(
             "CAP_805",
