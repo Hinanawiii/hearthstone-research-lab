@@ -4,9 +4,15 @@ from typing import Dict, Iterable
 
 from ...cards import CARDS
 from ...model import CardDef
+from .core_cs2_023 import CARD as CORE_CS2_023
+from .core_cs2_179 import CARD as CORE_CS2_179
+from .core_ds1_185 import CARD as CORE_DS1_185
 from .rlk_709 import CARD as RLK_709
 
-GENERATED_CARDS: Dict[str, CardDef] = {RLK_709.card_id: RLK_709}
+GENERATED_CARDS: Dict[str, CardDef] = {
+    card.card_id: card
+    for card in (RLK_709, CORE_DS1_185, CORE_CS2_023, CORE_CS2_179)
+}
 
 
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
@@ -19,4 +25,11 @@ def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
     return registry
 
 
-__all__ = ["GENERATED_CARDS", "RLK_709", "runtime_registry"]
+__all__ = [
+    "CORE_CS2_023",
+    "CORE_CS2_179",
+    "CORE_DS1_185",
+    "GENERATED_CARDS",
+    "RLK_709",
+    "runtime_registry",
+]

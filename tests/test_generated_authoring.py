@@ -59,11 +59,17 @@ class GeneratedAuthoringTests(unittest.TestCase):
         self.assertEqual(scenario["special_cases"][0]["details"]["shuffled_count"], 0)
 
     def test_generated_cards_do_not_change_the_reference_deck(self) -> None:
-        registry = runtime_registry(["RLK_709"])
-        self.assertIn("RLK_709", registry)
+        generated_ids = {
+            "RLK_709",
+            "CORE_DS1_185",
+            "CORE_CS2_023",
+            "CORE_CS2_179",
+        }
+        registry = runtime_registry(generated_ids)
+        self.assertTrue(generated_ids <= set(registry))
         from cardlab.cards import DECK_CARD_IDS
 
-        self.assertNotIn("RLK_709", DECK_CARD_IDS)
+        self.assertTrue(generated_ids.isdisjoint(DECK_CARD_IDS))
 
     def test_staging_requires_approval_and_stops_at_human_review(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -107,11 +113,16 @@ class GeneratedAuthoringTests(unittest.TestCase):
                 "RLK_709",
                 root / "artifact.json",
                 automated_tests="passed",
+                generation_usage={"model": "test-model", "total_tokens": 123},
             )
 
             self.assertEqual(staged["implementation_status"], "under_review")
             self.assertFalse(staged["ready_for_research"])
             self.assertEqual(staged["implementation_evidence"]["automated_tests"], "passed")
+            self.assertEqual(
+                staged["implementation_evidence"]["generation_usage"],
+                {"model": "test-model", "total_tokens": 123},
+            )
             self.assertEqual(
                 staged["implementation_evidence"]["scenario_document"]["schema_version"],
                 REVIEW_SCHEMA_VERSION,

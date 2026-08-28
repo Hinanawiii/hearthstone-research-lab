@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Mapping, Optional
 
 from ..review_format import (
     REVIEW_SCHEMA_VERSION,
@@ -12,12 +12,59 @@ from ..review_format import (
 )
 from ..store import ReviewStore
 from . import GENERATED_CARDS, runtime_registry
+from .core_cs2_023 import (
+    AUTHORING_METADATA as CORE_CS2_023_METADATA,
+)
+from .core_cs2_023 import (
+    SCENARIO_CARD_NAMES_ZH as CORE_CS2_023_CARD_NAMES,
+)
+from .core_cs2_023 import (
+    build_review_scenario as build_core_cs2_023_scenario,
+)
+from .core_cs2_179 import (
+    AUTHORING_METADATA as CORE_CS2_179_METADATA,
+)
+from .core_cs2_179 import (
+    SCENARIO_CARD_NAMES_ZH as CORE_CS2_179_CARD_NAMES,
+)
+from .core_cs2_179 import (
+    build_review_scenario as build_core_cs2_179_scenario,
+)
+from .core_ds1_185 import (
+    AUTHORING_METADATA as CORE_DS1_185_METADATA,
+)
+from .core_ds1_185 import (
+    SCENARIO_CARD_NAMES_ZH as CORE_DS1_185_CARD_NAMES,
+)
+from .core_ds1_185 import (
+    build_review_scenario as build_core_ds1_185_scenario,
+)
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
 
-CARD_MODULES = {"RLK_709": "src/cardlab/authoring/generated/rlk_709.py"}
-CARD_METADATA = {"RLK_709": AUTHORING_METADATA}
-SCENARIO_BUILDERS = {"RLK_709": build_review_scenario}
-SCENARIO_CARD_NAME_CATALOGS = {"RLK_709": SCENARIO_CARD_NAMES_ZH}
+CARD_MODULES = {
+    "RLK_709": "src/cardlab/authoring/generated/rlk_709.py",
+    "CORE_DS1_185": "src/cardlab/authoring/generated/core_ds1_185.py",
+    "CORE_CS2_023": "src/cardlab/authoring/generated/core_cs2_023.py",
+    "CORE_CS2_179": "src/cardlab/authoring/generated/core_cs2_179.py",
+}
+CARD_METADATA = {
+    "RLK_709": AUTHORING_METADATA,
+    "CORE_DS1_185": CORE_DS1_185_METADATA,
+    "CORE_CS2_023": CORE_CS2_023_METADATA,
+    "CORE_CS2_179": CORE_CS2_179_METADATA,
+}
+SCENARIO_BUILDERS = {
+    "RLK_709": build_review_scenario,
+    "CORE_DS1_185": build_core_ds1_185_scenario,
+    "CORE_CS2_023": build_core_cs2_023_scenario,
+    "CORE_CS2_179": build_core_cs2_179_scenario,
+}
+SCENARIO_CARD_NAME_CATALOGS = {
+    "RLK_709": SCENARIO_CARD_NAMES_ZH,
+    "CORE_DS1_185": CORE_DS1_185_CARD_NAMES,
+    "CORE_CS2_023": CORE_CS2_023_CARD_NAMES,
+    "CORE_CS2_179": CORE_CS2_179_CARD_NAMES,
+}
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
@@ -62,6 +109,7 @@ def stage_generated_card_for_review(
     artifact_path: Path,
     *,
     automated_tests: str,
+    generation_usage: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     artifact = build_review_artifact(store, card_id)
     store.upsert_card_names(
@@ -89,6 +137,8 @@ def stage_generated_card_for_review(
         "scenario_document": artifact,
         "review_text_zh": review_text_zh,
     }
+    if generation_usage:
+        evidence["generation_usage"] = dict(generation_usage)
     current_status = str(store.get_card(card_id)["implementation_status"])
     if current_status == "under_review":
         store.set_implementation_status(
