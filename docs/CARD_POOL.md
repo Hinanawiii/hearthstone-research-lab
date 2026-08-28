@@ -41,10 +41,26 @@ per turn. Taunt blocks attacks on other enemy targets while a living Taunt minio
 combat damage is simultaneous. Dead minions are removed after each damage event; Arcane Missiles
 therefore chooses again from the surviving enemy characters for every missile.
 
+## Opt-in authoring mechanics
+
+Generated cards are not added to the `legacy-mage-v1` deck. The authoring workflow loads them
+through a separate runtime registry, where the engine currently supports these mechanics:
+
+- Stealth blocks enemy targeting and attacks, then ends when the minion attacks;
+- Lifesteal heals the source minion's owner for damage actually dealt in combat, whether the
+  minion attacks or defends, up to 30 hero health;
+- Reborn replaces the first dead instance with a new one-health entity and removes Reborn from it;
+- Elusive blocks spell and hero-power targeting but does not block minion attacks;
+- Rush allows attacks against minions on the summoning turn and allows hero attacks on later turns;
+- Divine Shield replaces the first positive damage event, then disappears;
+- Overload accumulates while cards are played and locks that much mana on the owner's next turn.
+
+These are narrow implementations for the reviewed generated cards. They do not add a general
+trigger queue, enchantment layers, Silence interactions, or other undeclared combinations.
+
 ## Deliberate omissions
 
-Weapons, hero attacks, armor, secrets, overload, freeze, discover, card generation, enchantment
+Weapons, hero attacks, armor, secrets, freeze, discover, card generation, enchantment
 layers, auras, silence, deathrattles, triggered-effect queues, tribes, and mulligan are outside this
-version. No behavior should be inferred for an omitted mechanic. Adding one requires engine tests
-and a card-pool version change.
-
+version. No behavior should be inferred for an omitted mechanic. Adding one to the default deck
+requires engine tests and a card-pool version change.

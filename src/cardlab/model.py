@@ -45,6 +45,13 @@ class CardDef:
     target_mode: TargetMode = TargetMode.NONE
     effects: Tuple[Effect, ...] = ()
     collectible: bool = True
+    stealth: bool = False
+    lifesteal: bool = False
+    reborn: bool = False
+    elusive: bool = False
+    rush: bool = False
+    divine_shield: bool = False
+    overload: int = 0
 
 
 @dataclass
@@ -64,9 +71,15 @@ class Minion:
     charge: bool = False
     attacks_this_turn: int = 0
     summoned_turn: int = 0
+    stealth: bool = False
+    lifesteal: bool = False
+    reborn: bool = False
+    elusive: bool = False
+    rush: bool = False
+    divine_shield: bool = False
 
     def can_attack(self, turn: int) -> bool:
-        rested = self.summoned_turn < turn or self.charge
+        rested = self.summoned_turn < turn or self.charge or self.rush
         return self.attack > 0 and self.health > 0 and self.attacks_this_turn == 0 and rested
 
 
@@ -81,6 +94,8 @@ class PlayerState:
     deck: List[str] = field(default_factory=list)
     hand: List[HandCard] = field(default_factory=list)
     board: List[Minion] = field(default_factory=list)
+    overload_pending: int = 0
+    overloaded_mana: int = 0
 
 
 @dataclass(frozen=True)
@@ -128,4 +143,3 @@ class GameState:
     @property
     def terminal(self) -> bool:
         return self.winner is not None or self.terminal_reason == "draw"
-

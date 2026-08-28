@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
+from ...model import CardDef
 from ..review_format import (
     REVIEW_SCHEMA_VERSION,
     render_review_document_zh,
@@ -39,32 +41,53 @@ from .core_ds1_185 import (
 from .core_ds1_185 import (
     build_review_scenario as build_core_ds1_185_scenario,
 )
+from .keyword_batch import (
+    AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
+)
+from .keyword_batch import (
+    SCENARIO_CARD_NAMES_ZH as KEYWORD_BATCH_CARD_NAMES,
+)
+from .keyword_batch import (
+    build_review_scenario as build_keyword_batch_scenario,
+)
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
 
-CARD_MODULES = {
+CARD_MODULES: Dict[str, str] = {
     "RLK_709": "src/cardlab/authoring/generated/rlk_709.py",
     "CORE_DS1_185": "src/cardlab/authoring/generated/core_ds1_185.py",
     "CORE_CS2_023": "src/cardlab/authoring/generated/core_cs2_023.py",
     "CORE_CS2_179": "src/cardlab/authoring/generated/core_cs2_179.py",
 }
-CARD_METADATA = {
+CARD_METADATA: Dict[str, Mapping[str, Any]] = {
     "RLK_709": AUTHORING_METADATA,
     "CORE_DS1_185": CORE_DS1_185_METADATA,
     "CORE_CS2_023": CORE_CS2_023_METADATA,
     "CORE_CS2_179": CORE_CS2_179_METADATA,
 }
-SCENARIO_BUILDERS = {
+SCENARIO_BUILDERS: Dict[
+    str, Callable[[Dict[str, CardDef]], Dict[str, Any]]
+] = {
     "RLK_709": build_review_scenario,
     "CORE_DS1_185": build_core_ds1_185_scenario,
     "CORE_CS2_023": build_core_cs2_023_scenario,
     "CORE_CS2_179": build_core_cs2_179_scenario,
 }
-SCENARIO_CARD_NAME_CATALOGS = {
+SCENARIO_CARD_NAME_CATALOGS: Dict[str, Mapping[str, str]] = {
     "RLK_709": SCENARIO_CARD_NAMES_ZH,
     "CORE_DS1_185": CORE_DS1_185_CARD_NAMES,
     "CORE_CS2_023": CORE_CS2_023_CARD_NAMES,
     "CORE_CS2_179": CORE_CS2_179_CARD_NAMES,
 }
+
+for keyword_card_id, keyword_metadata in KEYWORD_BATCH_METADATA.items():
+    CARD_MODULES[keyword_card_id] = (
+        "src/cardlab/authoring/generated/keyword_batch.py"
+    )
+    CARD_METADATA[keyword_card_id] = keyword_metadata
+    SCENARIO_BUILDERS[keyword_card_id] = partial(
+        build_keyword_batch_scenario, keyword_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[keyword_card_id] = KEYWORD_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

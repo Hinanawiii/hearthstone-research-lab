@@ -180,6 +180,8 @@ def _review_player(
             "mana": int(player["mana"]),
             "max_mana": int(player["max_mana"]),
             "temporary_mana": int(player["temporary_mana"]),
+            "overload_pending": int(player.get("overload_pending", 0)),
+            "overloaded_mana": int(player.get("overloaded_mana", 0)),
             "fatigue": int(player["fatigue"]),
         },
         "zones": {
@@ -207,6 +209,16 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         mechanics.append("嘲讽")
     if minion.get("charge"):
         mechanics.append("冲锋")
+    for field, label in (
+        ("stealth", "潜行"),
+        ("lifesteal", "吸血"),
+        ("reborn", "复生"),
+        ("elusive", "扰魔"),
+        ("rush", "突袭"),
+        ("divine_shield", "圣盾"),
+    ):
+        if minion.get(field):
+            mechanics.append(label)
     return {
         "entity_id": int(minion["entity_id"]),
         "card_id": str(minion["card_id"]),
@@ -409,6 +421,13 @@ def _render_state(
                 board_text,
             )
         )
+        if resources.get("overload_pending") or resources.get("overloaded_mana"):
+            lines.append(
+                "  过载：待锁定 {}，本回合已锁定 {}。".format(
+                    resources.get("overload_pending", 0),
+                    resources.get("overloaded_mana", 0),
+                )
+            )
     return lines
 
 
@@ -430,10 +449,13 @@ def _board_text(board: Any, card_names_zh: Mapping[str, str]) -> str:
     for minion in board:
         item = _mapping(minion, "minion")
         rendered.append(
-            "{} {}/{}".format(
+            "{} {}/{}{}".format(
                 _card_reference(str(item["card_id"]), card_names_zh),
                 item["attack"],
                 item["health"],
+                " [{}]".format("、".join(item["mechanics_zh"]))
+                if item["mechanics_zh"]
+                else "",
             )
         )
     return "、".join(rendered)
@@ -460,7 +482,7 @@ def _render_value_zh(value: Any, card_names_zh: Mapping[str, str]) -> str:
         return "无"
     if isinstance(value, list):
         return (
-            "、".join(_replace_card_ids(str(item), card_names_zh) for item in value)
+            "、".join(_render_value_zh(item, card_names_zh) for item in value)
             if value
             else "无"
         )

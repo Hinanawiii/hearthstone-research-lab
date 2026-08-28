@@ -87,13 +87,22 @@ class Game:
                 continue
             if card.card_type == CardType.MINION and len(own.board) >= 7:
                 continue
-            for target in self._valid_targets(actor, card.target_mode):
+            for target in self._valid_targets(
+                actor,
+                card.target_mode,
+                exclude_elusive=card.card_type == CardType.SPELL,
+                exclude_enemy_stealth=True,
+            ):
                 actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
             if card.target_mode == TargetMode.NONE:
                 actions.append(Action(ActionType.PLAY, hand_card.entity_id))
 
         enemy = 1 - actor
-        taunts = [m for m in self.state.players[enemy].board if m.taunt and m.health > 0]
+        taunts = [
+            m
+            for m in self.state.players[enemy].board
+            if m.taunt and not m.stealth and m.health > 0
+        ]
         attack_targets: List[TargetRef]
         if taunts:
             attack_targets = [TargetRef.minion(enemy, minion.entity_id) for minion in taunts]
@@ -101,19 +110,27 @@ class Game:
             attack_targets = [TargetRef.hero(enemy)] + [
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
-                if minion.health > 0
+                if minion.health > 0 and not minion.stealth
             ]
         for minion in own.board:
             if minion.can_attack(self.state.turn):
+                minion_targets = attack_targets
+                if minion.rush and minion.summoned_turn == self.state.turn and not minion.charge:
+                    minion_targets = [target for target in attack_targets if target.kind == "minion"]
                 actions.extend(
                     Action(ActionType.ATTACK, minion.entity_id, target)
-                    for target in attack_targets
+                    for target in minion_targets
                 )
 
         if not own.hero_power_used and own.mana + own.temporary_mana >= 2:
             actions.extend(
                 Action(ActionType.HERO_POWER, target=target)
-                for target in self._valid_targets(actor, TargetMode.ANY_CHARACTER)
+                for target in self._valid_targets(
+                    actor,
+                    TargetMode.ANY_CHARACTER,
+                    exclude_elusive=True,
+                    exclude_enemy_stealth=True,
+                )
             )
         return actions
 
@@ -162,9 +179,16 @@ class Game:
                     max_health=card.health,
                     taunt=card.taunt,
                     charge=card.charge,
+                    stealth=card.stealth,
+                    lifesteal=card.lifesteal,
+                    reborn=card.reborn,
+                    elusive=card.elusive,
+                    rush=card.rush,
+                    divine_shield=card.divine_shield,
                     summoned_turn=self.state.turn,
                 )
             )
+        player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target)
         self._cleanup_deaths()
         self._check_terminal()
@@ -209,19 +233,31 @@ class Game:
         if target is None:
             raise IllegalAction("attack requires target")
         attacker.attacks_this_turn += 1
+        attacker.stealth = False
         if target.kind == "hero":
-            self._damage(target, attacker.attack)
+            damage_dealt = self._damage(target, attacker.attack)
         else:
             defender = self._find_minion(target.player, target.entity_id)
             defender_damage = defender.attack
-            self._damage(target, attacker.attack)
-            attacker.health -= defender_damage
+            damage_dealt = self._damage(target, attacker.attack)
+            defender_damage_dealt = self._damage(
+                TargetRef.minion(actor, attacker.entity_id), defender_damage
+            )
+            if defender.lifesteal and defender_damage_dealt > 0:
+                defender_owner = self.state.players[target.player]
+                defender_owner.hero_health = min(
+                    30, defender_owner.hero_health + defender_damage_dealt
+                )
+        if attacker.lifesteal and damage_dealt > 0:
+            owner = self.state.players[actor]
+            owner.hero_health = min(30, owner.hero_health + damage_dealt)
         self._cleanup_deaths()
         self._check_terminal()
 
     def _end_turn(self) -> None:
         current = self.state.players[self.state.active_player]
         current.temporary_mana = 0
+        current.overloaded_mana = 0
         self.state.active_player = 1 - self.state.active_player
         self._start_turn(self.state.active_player)
 
@@ -229,7 +265,9 @@ class Game:
         self.state.turn += 1
         player = self.state.players[player_index]
         player.max_mana = min(10, player.max_mana + 1)
-        player.mana = player.max_mana
+        player.overloaded_mana = min(player.max_mana, player.overload_pending)
+        player.overload_pending = 0
+        player.mana = player.max_mana - player.overloaded_mana
         player.temporary_mana = 0
         player.hero_power_used = False
         for minion in player.board:
@@ -256,41 +294,103 @@ class Game:
         player.temporary_mana -= temporary
         player.mana -= amount - temporary
 
-    def _valid_targets(self, actor: int, mode: TargetMode) -> List[TargetRef]:
+    def _valid_targets(
+        self,
+        actor: int,
+        mode: TargetMode,
+        *,
+        exclude_elusive: bool = False,
+        exclude_enemy_stealth: bool = False,
+    ) -> List[TargetRef]:
         if mode == TargetMode.NONE:
             return []
         if mode == TargetMode.FRIENDLY_MINION:
-            return [TargetRef.minion(actor, m.entity_id) for m in self.state.players[actor].board]
+            return [
+                TargetRef.minion(actor, m.entity_id)
+                for m in self.state.players[actor].board
+                if not exclude_elusive or not m.elusive
+            ]
         if mode == TargetMode.ENEMY_CHARACTER:
-            return self._enemy_characters(actor)
+            return self._enemy_characters(
+                actor,
+                exclude_elusive=exclude_elusive,
+                exclude_stealth=exclude_enemy_stealth,
+            )
         if mode == TargetMode.ANY_CHARACTER:
             targets = [TargetRef.hero(0), TargetRef.hero(1)]
             for player_index, player in enumerate(self.state.players):
-                targets.extend(TargetRef.minion(player_index, m.entity_id) for m in player.board)
+                targets.extend(
+                    TargetRef.minion(player_index, m.entity_id)
+                    for m in player.board
+                    if (not exclude_elusive or not m.elusive)
+                    and (
+                        not exclude_enemy_stealth
+                        or player_index == actor
+                        or not m.stealth
+                    )
+                )
             return targets
         raise RuntimeError("unknown target mode")
 
-    def _enemy_characters(self, actor: int) -> List[TargetRef]:
+    def _enemy_characters(
+        self,
+        actor: int,
+        *,
+        exclude_elusive: bool = False,
+        exclude_stealth: bool = False,
+    ) -> List[TargetRef]:
         enemy = 1 - actor
         return [TargetRef.hero(enemy)] + [
             TargetRef.minion(enemy, minion.entity_id)
             for minion in self.state.players[enemy].board
             if minion.health > 0
+            and (not exclude_elusive or not minion.elusive)
+            and (not exclude_stealth or not minion.stealth)
         ]
 
-    def _damage(self, target: Optional[TargetRef], amount: int) -> None:
+    def _damage(self, target: Optional[TargetRef], amount: int) -> int:
         if target is None:
             raise IllegalAction("effect requires target")
         if target.kind == "hero":
             self.state.players[target.player].hero_health -= amount
+            return amount
         elif target.kind == "minion":
-            self._find_minion(target.player, target.entity_id).health -= amount
+            minion = self._find_minion(target.player, target.entity_id)
+            if amount > 0 and minion.divine_shield:
+                minion.divine_shield = False
+                return 0
+            minion.health -= amount
+            return amount
         else:
             raise IllegalAction("unknown target kind")
 
     def _cleanup_deaths(self) -> None:
         for player in self.state.players:
-            player.board = [minion for minion in player.board if minion.health > 0]
+            survivors: List[Minion] = []
+            for minion in player.board:
+                if minion.health > 0:
+                    survivors.append(minion)
+                elif minion.reborn:
+                    card = self.cards[minion.card_id]
+                    survivors.append(
+                        Minion(
+                            entity_id=self._entity_id(),
+                            card_id=minion.card_id,
+                            attack=card.attack,
+                            health=1,
+                            max_health=card.health,
+                            taunt=card.taunt,
+                            charge=card.charge,
+                            stealth=card.stealth,
+                            lifesteal=card.lifesteal,
+                            reborn=False,
+                            elusive=card.elusive,
+                            rush=card.rush,
+                            divine_shield=card.divine_shield,
+                            summoned_turn=self.state.turn,
+                        )
+                    )
+            player.board = survivors
 
     def _check_terminal(self) -> None:
         dead = [index for index, p in enumerate(self.state.players) if p.hero_health <= 0]
@@ -349,6 +449,8 @@ class Game:
             "max_mana": player.max_mana,
             "mana": player.mana,
             "temporary_mana": player.temporary_mana,
+            "overload_pending": player.overload_pending,
+            "overloaded_mana": player.overloaded_mana,
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
             "deck_count": len(player.deck),

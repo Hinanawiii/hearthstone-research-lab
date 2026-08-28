@@ -65,6 +65,24 @@ class GeneratedAuthoringTests(unittest.TestCase):
             "CORE_CS2_023",
             "CORE_CS2_179",
         }
+        generated_ids.update(
+            {
+                "Core_CS2_200",
+                "CORE_BT_701",
+                "CORE_EX1_010",
+                "CORE_GIL_558",
+                "CORE_ULD_723",
+                "CORE_NEW1_023",
+                "CS3_038",
+                "CORE_EX1_028",
+                "CORE_LOOT_137",
+                "CORE_ICC_038",
+                "CORE_GVG_085",
+                "CORE_AT_052",
+                "CORE_DRG_079",
+                "CORE_EX1_250",
+            }
+        )
         registry = runtime_registry(generated_ids)
         self.assertTrue(generated_ids <= set(registry))
         from cardlab.cards import DECK_CARD_IDS
