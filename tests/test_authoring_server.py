@@ -75,6 +75,13 @@ class AuthoringServerTests(unittest.TestCase):
             },
         )
         self.assertTrue(implemented["card"]["ready_for_research"])
+        self.assertEqual(
+            implemented["card"]["implementation_reviewed_by"], "reviewer"
+        )
+        self.assertEqual(
+            implemented["card"]["implementation_evidence"]["human_scenario_review"],
+            "approved",
+        )
 
         proposal = self.request(
             "/api/research/proposals",
@@ -117,6 +124,18 @@ class AuthoringServerTests(unittest.TestCase):
         self.assertEqual(
             repeated["bulk_approval"], {"approved_count": 0, "card_ids": []}
         )
+
+    def test_static_review_page_exposes_implementation_approval_controls(self) -> None:
+        with urlopen(self.base_url + "/", timeout=2) as response:
+            html = response.read().decode("utf-8")
+        with urlopen(self.base_url + "/app.js", timeout=2) as response:
+            javascript = response.read().decode("utf-8")
+
+        self.assertIn('id="implementation-approval-button"', html)
+        self.assertIn('id="implementation-review-dialog"', html)
+        self.assertIn('name="code_review_confirmed"', html)
+        self.assertIn('name="scenario_review_confirmed"', html)
+        self.assertIn('status: "implementation_ready"', javascript)
 
 
 if __name__ == "__main__":

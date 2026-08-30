@@ -182,6 +182,21 @@ function renderDetail() {
   approvalButton.textContent = card.generation_approved ? "撤销制卡批准" : "人工批准制卡";
   approvalButton.className = card.generation_approved ? "secondary" : "";
   approvalButton.classList.toggle("hidden", !card.authoring_ready);
+  const implementationApprovalButton = $("#implementation-approval-button");
+  const implementationEvidence = card.implementation_evidence || {};
+  const hasReviewEvidence = Boolean(
+    implementationEvidence.automated_tests
+    && implementationEvidence.scenario_document
+  );
+  const awaitingImplementationReview = card.implementation_status === "under_review";
+  implementationApprovalButton.classList.toggle("hidden", !awaitingImplementationReview);
+  implementationApprovalButton.disabled = awaitingImplementationReview && !hasReviewEvidence;
+  implementationApprovalButton.textContent = hasReviewEvidence
+    ? "核验准出"
+    : "核验材料不完整";
+  implementationApprovalButton.title = hasReviewEvidence
+    ? "人工确认代码、测试和前后局面后准出"
+    : "需要自动测试结果和固定格式核验局面";
   renderImplementationReview(card);
   $("#question-summary").textContent = `${card.answered_count}/${card.question_count} 已回答，${card.needs_verification_count} 项等待实机验证`;
   renderQuestions(card.questions);
@@ -349,6 +364,18 @@ $("#new-card-button").addEventListener("click", () => $("#card-dialog").showModa
 $("#add-question-button").addEventListener("click", () => $("#question-dialog").showModal());
 $("#close-card-dialog").addEventListener("click", () => $("#card-dialog").close());
 $("#close-question-dialog").addEventListener("click", () => $("#question-dialog").close());
+$("#close-implementation-review-dialog").addEventListener("click", () => {
+  $("#implementation-review-dialog").close();
+  $("#implementation-review-form").reset();
+});
+
+$("#implementation-approval-button").addEventListener("click", () => {
+  const card = state.selectedCard;
+  if (!card || card.implementation_status !== "under_review") return;
+  $("#implementation-review-form").reset();
+  $("#implementation-review-context").textContent = `${card.name}（${card.card_id}）`;
+  $("#implementation-review-dialog").showModal();
+});
 
 $("#card-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -381,6 +408,37 @@ $("#question-form").addEventListener("submit", async (event) => {
     form.elements.asked_by.value = "llm";
     form.elements.blocking.checked = true;
     toast("问题已加入队列，制卡门禁已关闭");
+    await loadCards(state.selectedCardId);
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+
+$("#implementation-review-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const reviewer = String(data.get("reviewer") || "").trim();
+  const note = String(data.get("note") || "").trim();
+  const existingEvidence = state.selectedCard.implementation_evidence || {};
+  const evidence = {
+    ...existingEvidence,
+    code_review: `人工核验通过（${reviewer}）`,
+    human_scenario_review: `人工核验通过（${reviewer}）`,
+  };
+  try {
+    await api(`/api/cards/${encodeURIComponent(state.selectedCardId)}/implementation`, {
+      method: "POST",
+      body: JSON.stringify({
+        status: "implementation_ready",
+        reviewer,
+        note: note || "通过审核台完成人工实现核验",
+        evidence,
+      }),
+    });
+    $("#implementation-review-dialog").close();
+    form.reset();
+    toast("实现核验已准出，卡牌进入研究就绪");
     await loadCards(state.selectedCardId);
   } catch (error) {
     toast(error.message, true);
