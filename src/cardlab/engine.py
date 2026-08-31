@@ -205,14 +205,29 @@ class Game:
             if self.state.terminal:
                 return
             if effect.kind == "damage":
-                target = selected
-                if effect.target == "owner_hero":
-                    target = TargetRef.hero(actor)
-                elif effect.target == "played_minion":
-                    target = played_minion
-                elif effect.target != "selected":
-                    raise RuntimeError("unsupported damage target: {}".format(effect.target))
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
                 self._damage(target, effect.amount)
+            elif effect.kind == "heal":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._heal(target, effect.amount)
+            elif effect.kind == "buff":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._buff_minion(target, effect.attack, effect.health)
+            elif effect.kind == "grant_keyword":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._grant_minion_keyword(target, effect.keyword)
+            elif effect.kind == "armor":
+                if effect.target != "owner_hero":
+                    raise RuntimeError("unsupported armor target: {}".format(effect.target))
+                self.state.players[actor].hero_armor += effect.amount
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
@@ -231,15 +246,46 @@ class Game:
                     if self.state.terminal:
                         break
             elif effect.kind == "damage_all":
-                targets = self._damage_group_targets(actor, effect.target, played_minion)
+                targets = self._group_targets(actor, effect.target, played_minion)
                 for target in targets:
                     self._damage(target, effect.amount)
                 self._cleanup_deaths()
                 self._check_terminal()
+            elif effect.kind == "heal_all":
+                for target in self._group_targets(actor, effect.target, played_minion):
+                    self._heal(target, effect.amount)
+            elif effect.kind == "buff_all":
+                for target in self._group_targets(actor, effect.target, played_minion):
+                    self._buff_minion(target, effect.attack, effect.health)
+            elif effect.kind == "grant_keyword_all":
+                for target in self._group_targets(actor, effect.target, played_minion):
+                    self._grant_minion_keyword(target, effect.keyword)
+            elif effect.kind == "set_health_all":
+                for target in self._group_targets(actor, effect.target, played_minion):
+                    minion = self._find_minion(target.player, target.entity_id)
+                    minion.health = effect.amount
+                    minion.max_health = effect.amount
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
 
-    def _damage_group_targets(
+    @staticmethod
+    def _single_effect_target(
+        actor: int,
+        target: str,
+        selected: Optional[TargetRef],
+        played_minion: Optional[TargetRef],
+    ) -> Optional[TargetRef]:
+        if target == "selected":
+            return selected
+        if target == "owner_hero":
+            return TargetRef.hero(actor)
+        if target == "enemy_hero":
+            return TargetRef.hero(1 - actor)
+        if target == "played_minion":
+            return played_minion
+        raise RuntimeError("unsupported single effect target: {}".format(target))
+
+    def _group_targets(
         self,
         actor: int,
         target: str,
@@ -252,6 +298,25 @@ class Game:
             return [
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
+                if minion.health > 0
+            ]
+        if target == "friendly_minions":
+            return [
+                TargetRef.minion(actor, minion.entity_id)
+                for minion in self.state.players[actor].board
+                if minion.health > 0
+            ]
+        if target == "friendly_characters":
+            return [TargetRef.hero(actor)] + [
+                TargetRef.minion(actor, minion.entity_id)
+                for minion in self.state.players[actor].board
+                if minion.health > 0
+            ]
+        if target == "all_minions":
+            return [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
                 if minion.health > 0
             ]
         if target == "all_characters":
@@ -273,7 +338,7 @@ class Game:
                     or minion.entity_id != played_minion.entity_id
                 )
             ]
-        raise RuntimeError("unsupported damage_all target: {}".format(target))
+        raise RuntimeError("unsupported group target: {}".format(target))
 
     def _attack(self, actor: int, action: Action) -> None:
         attacker = self._find_minion(actor, action.source_id)
@@ -358,6 +423,19 @@ class Game:
                 for m in self.state.players[actor].board
                 if not exclude_elusive or not m.elusive
             ]
+        if mode == TargetMode.ANY_MINION:
+            return [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0
+                and (not exclude_elusive or not minion.elusive)
+                and (
+                    not exclude_enemy_stealth
+                    or player_index == actor
+                    or not minion.stealth
+                )
+            ]
         if mode == TargetMode.ENEMY_CHARACTER:
             return self._enemy_characters(
                 actor,
@@ -400,7 +478,10 @@ class Game:
         if target is None:
             raise IllegalAction("effect requires target")
         if target.kind == "hero":
-            self.state.players[target.player].hero_health -= amount
+            player = self.state.players[target.player]
+            absorbed = min(player.hero_armor, amount)
+            player.hero_armor -= absorbed
+            player.hero_health -= amount - absorbed
             return amount
         elif target.kind == "minion":
             minion = self._find_minion(target.player, target.entity_id)
@@ -411,6 +492,37 @@ class Game:
             return amount
         else:
             raise IllegalAction("unknown target kind")
+
+    def _heal(self, target: Optional[TargetRef], amount: int) -> None:
+        if target is None:
+            raise IllegalAction("effect requires target")
+        if target.kind == "hero":
+            player = self.state.players[target.player]
+            player.hero_health = min(30, player.hero_health + amount)
+            return
+        if target.kind == "minion":
+            minion = self._find_minion(target.player, target.entity_id)
+            minion.health = min(minion.max_health, minion.health + amount)
+            return
+        raise IllegalAction("unknown target kind")
+
+    def _buff_minion(
+        self, target: Optional[TargetRef], attack: int, health: int
+    ) -> None:
+        if target is None or target.kind != "minion":
+            raise IllegalAction("buff requires a minion target")
+        minion = self._find_minion(target.player, target.entity_id)
+        minion.attack += attack
+        minion.health += health
+        minion.max_health += health
+
+    def _grant_minion_keyword(self, target: Optional[TargetRef], keyword: str) -> None:
+        if target is None or target.kind != "minion":
+            raise IllegalAction("keyword effect requires a minion target")
+        if keyword not in {"taunt", "elusive", "divine_shield"}:
+            raise RuntimeError("unsupported granted keyword: {}".format(keyword))
+        minion = self._find_minion(target.player, target.entity_id)
+        setattr(minion, keyword, True)
 
     def _cleanup_deaths(self) -> None:
         for player in self.state.players:
@@ -494,6 +606,7 @@ class Game:
     def _player_public(player: PlayerState, include_hand: bool) -> Dict[str, Any]:
         data: Dict[str, Any] = {
             "hero_health": player.hero_health,
+            "hero_armor": player.hero_armor,
             "max_mana": player.max_mana,
             "mana": player.mana,
             "temporary_mana": player.temporary_mana,

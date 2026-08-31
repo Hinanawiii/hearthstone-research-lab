@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
+from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
 from .store import ReviewStore
 
 CLASSIFICATION_VERSION = "core-authoring-batches.v1"
@@ -77,6 +78,9 @@ _EVENT_MARKERS = (
     "每次",
     "在你的回合结束时",
     "在你的回合开始时",
+    "在每个回合开始时",
+    "在你对手的回合",
+    "如果你在本回合",
     "在本随从被攻击后",
     "在你的英雄攻击后",
     "在你施放",
@@ -88,10 +92,13 @@ _EVENT_MARKERS = (
     "你的其他",
     "所有友方攻击",
     "每有",
+    "相邻的随从拥有",
+    "法术伤害",
 )
 _ZONE_MARKERS = (
     "抽",
     "发现",
+    "随机",
     "手牌",
     "牌库",
     "洗入",
@@ -101,6 +108,7 @@ _ZONE_MARKERS = (
     "随机置入",
     "变形",
     "偷取",
+    "香蕉",
 )
 _SUMMON_DEATH_MARKERS = (
     "召唤",
@@ -135,6 +143,8 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
     text = str(card.get("source_text", ""))
     if card_id in DAMAGE_CONTRACTS:
         return "deterministic_damage"
+    if card_id in STATUS_BATCH_CARDS:
+        return "stats_status_and_resources"
     if card_type == "WEAPON" or "武器" in text or "英雄攻击" in text:
         return "weapons_and_hero_combat"
     if card_type == "LOCATION" or any(marker in text for marker in _SPECIAL_MARKERS):

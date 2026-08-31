@@ -10,6 +10,7 @@ from .core_ds1_185 import CARD as CORE_DS1_185
 from .damage_batch import CARDS as DAMAGE_BATCH_CARDS
 from .keyword_batch import CARDS as KEYWORD_BATCH_CARDS
 from .rlk_709 import CARD as RLK_709
+from .status_batch import CARDS as STATUS_BATCH_CARDS
 
 GENERATED_CARDS: Dict[str, CardDef] = {
     card.card_id: card
@@ -17,6 +18,7 @@ GENERATED_CARDS: Dict[str, CardDef] = {
 }
 GENERATED_CARDS.update(KEYWORD_BATCH_CARDS)
 GENERATED_CARDS.update(DAMAGE_BATCH_CARDS)
+GENERATED_CARDS.update(STATUS_BATCH_CARDS)
 
 
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
@@ -37,5 +39,6 @@ __all__ = [
     "GENERATED_CARDS",
     "KEYWORD_BATCH_CARDS",
     "RLK_709",
+    "STATUS_BATCH_CARDS",
     "runtime_registry",
 ]

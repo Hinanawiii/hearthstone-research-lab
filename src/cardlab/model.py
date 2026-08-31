@@ -13,6 +13,7 @@ class CardType(str, Enum):
 class TargetMode(str, Enum):
     NONE = "none"
     ANY_CHARACTER = "any_character"
+    ANY_MINION = "any_minion"
     ENEMY_CHARACTER = "enemy_character"
     FRIENDLY_MINION = "friendly_minion"
 
@@ -30,6 +31,9 @@ class Effect:
     amount: int = 0
     target: str = "selected"
     repeats: int = 1
+    attack: int = 0
+    health: int = 0
+    keyword: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,6 +90,7 @@ class Minion:
 @dataclass
 class PlayerState:
     hero_health: int = 30
+    hero_armor: int = 0
     max_mana: int = 0
     mana: int = 0
     temporary_mana: int = 0

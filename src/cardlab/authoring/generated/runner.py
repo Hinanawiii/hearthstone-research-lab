@@ -60,6 +60,15 @@ from .keyword_batch import (
     build_review_scenario as build_keyword_batch_scenario,
 )
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
+from .status_batch import (
+    AUTHORING_METADATA as STATUS_BATCH_METADATA,
+)
+from .status_batch import (
+    SCENARIO_CARD_NAMES_ZH as STATUS_BATCH_CARD_NAMES,
+)
+from .status_batch import (
+    build_review_scenario as build_status_batch_scenario,
+)
 
 CARD_MODULES: Dict[str, str] = {
     "RLK_709": "src/cardlab/authoring/generated/rlk_709.py",
@@ -107,6 +116,16 @@ for damage_card_id, damage_metadata in DAMAGE_BATCH_METADATA.items():
         build_damage_batch_scenario, damage_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[damage_card_id] = DAMAGE_BATCH_CARD_NAMES
+
+for status_card_id, status_metadata in STATUS_BATCH_METADATA.items():
+    CARD_MODULES[status_card_id] = (
+        "src/cardlab/authoring/generated/status_batch.py"
+    )
+    CARD_METADATA[status_card_id] = status_metadata
+    SCENARIO_BUILDERS[status_card_id] = partial(
+        build_status_batch_scenario, status_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[status_card_id] = STATUS_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
