@@ -41,6 +41,15 @@ from .core_ds1_185 import (
 from .core_ds1_185 import (
     build_review_scenario as build_core_ds1_185_scenario,
 )
+from .damage_batch import (
+    AUTHORING_METADATA as DAMAGE_BATCH_METADATA,
+)
+from .damage_batch import (
+    SCENARIO_CARD_NAMES_ZH as DAMAGE_BATCH_CARD_NAMES,
+)
+from .damage_batch import (
+    build_review_scenario as build_damage_batch_scenario,
+)
 from .keyword_batch import (
     AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
 )
@@ -88,6 +97,16 @@ for keyword_card_id, keyword_metadata in KEYWORD_BATCH_METADATA.items():
         build_keyword_batch_scenario, keyword_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[keyword_card_id] = KEYWORD_BATCH_CARD_NAMES
+
+for damage_card_id, damage_metadata in DAMAGE_BATCH_METADATA.items():
+    CARD_MODULES[damage_card_id] = (
+        "src/cardlab/authoring/generated/damage_batch.py"
+    )
+    CARD_METADATA[damage_card_id] = damage_metadata
+    SCENARIO_BUILDERS[damage_card_id] = partial(
+        build_damage_batch_scenario, damage_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[damage_card_id] = DAMAGE_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

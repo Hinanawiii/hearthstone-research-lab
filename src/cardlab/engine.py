@@ -169,36 +169,50 @@ class Game:
         card = self.cards[hand_card.card_id]
         self._spend_mana(player, card.cost)
         player.hand.remove(hand_card)
+        played_minion: Optional[TargetRef] = None
         if card.card_type == CardType.MINION:
-            player.board.append(
-                Minion(
-                    entity_id=self._entity_id(),
-                    card_id=card.card_id,
-                    attack=card.attack,
-                    health=card.health,
-                    max_health=card.health,
-                    taunt=card.taunt,
-                    charge=card.charge,
-                    stealth=card.stealth,
-                    lifesteal=card.lifesteal,
-                    reborn=card.reborn,
-                    elusive=card.elusive,
-                    rush=card.rush,
-                    divine_shield=card.divine_shield,
-                    summoned_turn=self.state.turn,
-                )
+            minion = Minion(
+                entity_id=self._entity_id(),
+                card_id=card.card_id,
+                attack=card.attack,
+                health=card.health,
+                max_health=card.health,
+                taunt=card.taunt,
+                charge=card.charge,
+                stealth=card.stealth,
+                lifesteal=card.lifesteal,
+                reborn=card.reborn,
+                elusive=card.elusive,
+                rush=card.rush,
+                divine_shield=card.divine_shield,
+                summoned_turn=self.state.turn,
             )
+            player.board.append(minion)
+            played_minion = TargetRef.minion(actor, minion.entity_id)
         player.overload_pending += card.overload
-        self._resolve_effects(actor, card, action.target)
+        self._resolve_effects(actor, card, action.target, played_minion)
         self._cleanup_deaths()
         self._check_terminal()
 
-    def _resolve_effects(self, actor: int, card: CardDef, selected: Optional[TargetRef]) -> None:
+    def _resolve_effects(
+        self,
+        actor: int,
+        card: CardDef,
+        selected: Optional[TargetRef],
+        played_minion: Optional[TargetRef],
+    ) -> None:
         for effect in card.effects:
             if self.state.terminal:
                 return
             if effect.kind == "damage":
-                self._damage(selected, effect.amount)
+                target = selected
+                if effect.target == "owner_hero":
+                    target = TargetRef.hero(actor)
+                elif effect.target == "played_minion":
+                    target = played_minion
+                elif effect.target != "selected":
+                    raise RuntimeError("unsupported damage target: {}".format(effect.target))
+                self._damage(target, effect.amount)
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
@@ -217,15 +231,49 @@ class Game:
                     if self.state.terminal:
                         break
             elif effect.kind == "damage_all":
-                if effect.target != "enemy_characters":
-                    raise RuntimeError("unsupported damage_all target: {}".format(effect.target))
-                targets = self._enemy_characters(actor)
+                targets = self._damage_group_targets(actor, effect.target, played_minion)
                 for target in targets:
                     self._damage(target, effect.amount)
                 self._cleanup_deaths()
                 self._check_terminal()
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
+
+    def _damage_group_targets(
+        self,
+        actor: int,
+        target: str,
+        played_minion: Optional[TargetRef],
+    ) -> List[TargetRef]:
+        if target == "enemy_characters":
+            return self._enemy_characters(actor)
+        if target == "enemy_minions":
+            enemy = 1 - actor
+            return [
+                TargetRef.minion(enemy, minion.entity_id)
+                for minion in self.state.players[enemy].board
+                if minion.health > 0
+            ]
+        if target == "all_characters":
+            return [TargetRef.hero(0), TargetRef.hero(1)] + [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0
+            ]
+        if target == "all_other_minions":
+            return [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0
+                and (
+                    played_minion is None
+                    or player_index != played_minion.player
+                    or minion.entity_id != played_minion.entity_id
+                )
+            ]
+        raise RuntimeError("unsupported damage_all target: {}".format(target))
 
     def _attack(self, actor: int, action: Action) -> None:
         attacker = self._find_minion(actor, action.source_id)

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
+from .authoring.core_batches import batch_counts, build_core_batch_report
 from .authoring.importer import import_current_standard
 from .authoring.review_format import render_review_document_zh
 from .authoring.server import serve_review_queue
@@ -93,6 +94,19 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("runs/authoring/review.db"),
         help="card-name catalog database used to render Chinese names",
+    )
+
+    classify_core = sub.add_parser(
+        "classify-core", help="classify remaining Core cards into authoring batches"
+    )
+    classify_core.add_argument(
+        "--db", type=Path, default=Path("runs/authoring/review.db"), help="SQLite database path"
+    )
+    classify_core.add_argument(
+        "--output",
+        type=Path,
+        default=Path("runs/authoring/core-batches.json"),
+        help="full deterministic classification report",
     )
     return parser
 
@@ -197,6 +211,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.output.write_text(rendered, encoding="utf-8")
         else:
             print(rendered, end="")
+        return 0
+    if args.command == "classify-core":
+        report = build_core_batch_report(ReviewStore(args.db))
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            json.dumps(
+                {
+                    "output": str(args.output),
+                    "remaining_card_count": report["remaining_card_count"],
+                    "batches": batch_counts(report),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
         return 0
     return 2
 
