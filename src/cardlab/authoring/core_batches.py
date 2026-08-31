@@ -23,24 +23,14 @@ CATEGORIES: Tuple[BatchCategory, ...] = (
         "目标选择、固定伤害、群体范围和过载；先复用同一套伤害结算原语。",
     ),
     BatchCategory(
+        "stats_status_and_resources",
+        "属性、状态与资源",
+        "增减属性、治疗、护甲、冻结、沉默、法力和其他持续状态。",
+    ),
+    BatchCategory(
         "weapons_and_hero_combat",
         "武器与英雄战斗",
         "武器区、耐久度、英雄攻击以及相关触发。",
-    ),
-    BatchCategory(
-        "special_actions_and_zones",
-        "特殊动作与区域",
-        "奥秘、地标、抉择、流放、连击、可交易和费用替换等动作模型。",
-    ),
-    BatchCategory(
-        "event_triggers_and_history",
-        "事件触发与历史",
-        "回合、攻击、施法、受伤、抽牌等事件总线，以及跨回合历史。",
-    ),
-    BatchCategory(
-        "hand_deck_and_random",
-        "手牌牌库与随机",
-        "抽牌、发现、洗入、复制、变形、随机生成和隐藏信息。",
     ),
     BatchCategory(
         "summon_death_and_corpses",
@@ -48,9 +38,19 @@ CATEGORIES: Tuple[BatchCategory, ...] = (
         "衍生物、亡语、复活、消灭、死亡队列和死亡骑士残骸。",
     ),
     BatchCategory(
-        "stats_status_and_resources",
-        "属性、状态与资源",
-        "增减属性、治疗、护甲、冻结、沉默、法力和其他持续状态。",
+        "hand_deck_and_random",
+        "手牌牌库与随机",
+        "抽牌、发现、洗入、复制、变形、随机生成和隐藏信息。",
+    ),
+    BatchCategory(
+        "event_triggers_and_history",
+        "事件触发与历史",
+        "回合、攻击、施法、受伤、抽牌等事件总线，以及跨回合历史。",
+    ),
+    BatchCategory(
+        "special_actions_and_zones",
+        "特殊动作与区域",
+        "奥秘、地标、抉择、流放、连击、可交易和费用替换等动作模型。",
     ),
     BatchCategory(
         "composite_and_unique",
