@@ -167,6 +167,9 @@ def _review_player(
     known_deck_top: Sequence[str],
 ) -> Dict[str, Any]:
     hand_cards = [] if hand_hidden else list(player.get("hand", []))
+    hero_tags = list(player.get("hero_tags", []))
+    if player.get("hero_frozen"):
+        hero_tags.append("冻结")
     return {
         "player_id": player_id,
         "role_zh": role_zh,
@@ -174,7 +177,7 @@ def _review_player(
             "health": int(player["hero_health"]),
             "armor": int(player.get("hero_armor", 0)),
             "attack": int(player.get("hero_attack", 0)),
-            "tags": list(player.get("hero_tags", [])),
+            "tags": hero_tags,
         },
         "resources": {
             "mana": int(player["mana"]),
@@ -217,12 +220,18 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         ("rush", "突袭"),
         ("divine_shield", "圣盾"),
         ("poisonous", "剧毒"),
+        ("frozen", "冻结"),
     ):
         if minion.get(field):
             mechanics.append(label)
     tags = dict(minion.get("tags", {}))
     if minion.get("races"):
         tags["races"] = list(minion["races"])
+    if minion.get("temporary_attack"):
+        tags["temporary_attack"] = int(minion["temporary_attack"])
+        tags["temporary_attack_expires_turn"] = minion.get(
+            "temporary_attack_expires_turn"
+        )
     return {
         "entity_id": int(minion["entity_id"]),
         "card_id": str(minion["card_id"]),
@@ -412,11 +421,12 @@ def _render_state(
         )
         board_text = _board_text(zones["board"], card_names_zh)
         lines.append(
-            "- {}：英雄 {} 点生命、{} 点护甲；法力 {}/{}，临时法力 {}；"
+            "- {}：英雄 {} 点生命、{} 点护甲{}；法力 {}/{}，临时法力 {}；"
             "手牌 {}；牌库 {} 张；场上 {}。".format(
                 item["role_zh"],
                 hero["health"],
                 hero["armor"],
+                " [{}]".format("、".join(hero["tags"])) if hero["tags"] else "",
                 resources["mana"],
                 resources["max_mana"],
                 resources["temporary_mana"],
@@ -454,7 +464,18 @@ def _board_text(board: Any, card_names_zh: Mapping[str, str]) -> str:
         item = _mapping(minion, "minion")
         annotations = list(item["mechanics_zh"])
         races = _mapping(item.get("tags", {}), "minion tags").get("races", [])
-        race_labels = {"UNDEAD": "亡灵"}
+        race_labels = {
+            "BEAST": "野兽",
+            "DEMON": "恶魔",
+            "DRAGON": "龙",
+            "ELEMENTAL": "元素",
+            "MECHANICAL": "机械",
+            "MURLOC": "鱼人",
+            "PIRATE": "海盗",
+            "QUILBOAR": "野猪人",
+            "TOTEM": "图腾",
+            "UNDEAD": "亡灵",
+        }
         if races:
             annotations.append(
                 "种族：{}".format(

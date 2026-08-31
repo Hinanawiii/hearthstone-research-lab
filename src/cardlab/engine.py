@@ -226,6 +226,21 @@ class Game:
                     actor, effect.target, selected, played_minion
                 )
                 self._grant_minion_keyword(target, effect.keyword)
+            elif effect.kind == "freeze":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._freeze(target)
+            elif effect.kind == "temporary_buff":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._temporary_attack_buff(target, effect.attack)
+            elif effect.kind == "swap_stats":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                self._swap_minion_attack_and_health(target)
             elif effect.kind == "armor":
                 if effect.target != "owner_hero":
                     raise RuntimeError("unsupported armor target: {}".format(effect.target))
@@ -262,6 +277,9 @@ class Game:
             elif effect.kind == "grant_keyword_all":
                 for target in self._group_targets(actor, effect.target, played_minion):
                     self._grant_minion_keyword(target, effect.keyword)
+            elif effect.kind == "freeze_all":
+                for target in self._group_targets(actor, effect.target, played_minion):
+                    self._freeze(target)
             elif effect.kind == "set_health_all":
                 for target in self._group_targets(actor, effect.target, played_minion):
                     minion = self._find_minion(target.player, target.entity_id)
@@ -375,6 +393,21 @@ class Game:
 
     def _end_turn(self) -> None:
         current = self.state.players[self.state.active_player]
+        for minion in current.board:
+            if minion.frozen and minion.can_attack_ignoring_freeze(self.state.turn):
+                minion.frozen = False
+        if (
+            current.hero_frozen
+            and current.hero_attack > 0
+            and current.hero_attacks_this_turn == 0
+        ):
+            current.hero_frozen = False
+        for player in self.state.players:
+            for minion in player.board:
+                if minion.temporary_attack_expires_turn == self.state.turn:
+                    minion.attack -= minion.temporary_attack
+                    minion.temporary_attack = 0
+                    minion.temporary_attack_expires_turn = None
         current.temporary_mana = 0
         current.overloaded_mana = 0
         self.state.active_player = 1 - self.state.active_player
@@ -389,6 +422,7 @@ class Game:
         player.mana = player.max_mana - player.overloaded_mana
         player.temporary_mana = 0
         player.hero_power_used = False
+        player.hero_attacks_this_turn = 0
         for minion in player.board:
             minion.attacks_this_turn = 0
         self._draw(player_index)
@@ -536,6 +570,39 @@ class Game:
         minion = self._find_minion(target.player, target.entity_id)
         setattr(minion, keyword, True)
 
+    def _freeze(self, target: Optional[TargetRef]) -> None:
+        if target is None:
+            raise IllegalAction("freeze requires a target")
+        if target.kind == "hero":
+            self.state.players[target.player].hero_frozen = True
+            return
+        if target.kind == "minion":
+            self._find_minion(target.player, target.entity_id).frozen = True
+            return
+        raise IllegalAction("unknown target kind")
+
+    def _temporary_attack_buff(
+        self, target: Optional[TargetRef], attack: int
+    ) -> None:
+        if target is None or target.kind != "minion":
+            raise IllegalAction("temporary buff requires a minion target")
+        minion = self._find_minion(target.player, target.entity_id)
+        minion.attack += attack
+        minion.temporary_attack += attack
+        minion.temporary_attack_expires_turn = self.state.turn
+
+    def _swap_minion_attack_and_health(self, target: Optional[TargetRef]) -> None:
+        if target is None or target.kind != "minion":
+            raise IllegalAction("stat swap requires a minion target")
+        minion = self._find_minion(target.player, target.entity_id)
+        previous_attack = minion.attack
+        previous_health = minion.health
+        minion.attack = previous_health
+        minion.health = previous_attack
+        minion.max_health = previous_attack
+        minion.temporary_attack = 0
+        minion.temporary_attack_expires_turn = None
+
     def _cleanup_deaths(self) -> None:
         for player in self.state.players:
             survivors: List[Minion] = []
@@ -621,6 +688,8 @@ class Game:
         data: Dict[str, Any] = {
             "hero_health": player.hero_health,
             "hero_armor": player.hero_armor,
+            "hero_attack": player.hero_attack,
+            "hero_frozen": player.hero_frozen,
             "max_mana": player.max_mana,
             "mana": player.mana,
             "temporary_mana": player.temporary_mana,

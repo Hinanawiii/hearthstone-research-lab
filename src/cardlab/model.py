@@ -86,16 +86,25 @@ class Minion:
     divine_shield: bool = False
     poisonous: bool = False
     races: Tuple[str, ...] = ()
+    frozen: bool = False
+    temporary_attack: int = 0
+    temporary_attack_expires_turn: Optional[int] = None
 
-    def can_attack(self, turn: int) -> bool:
+    def can_attack_ignoring_freeze(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush
         return self.attack > 0 and self.health > 0 and self.attacks_this_turn == 0 and rested
+
+    def can_attack(self, turn: int) -> bool:
+        return not self.frozen and self.can_attack_ignoring_freeze(turn)
 
 
 @dataclass
 class PlayerState:
     hero_health: int = 30
     hero_armor: int = 0
+    hero_attack: int = 0
+    hero_attacks_this_turn: int = 0
+    hero_frozen: bool = False
     max_mana: int = 0
     mana: int = 0
     temporary_mana: int = 0

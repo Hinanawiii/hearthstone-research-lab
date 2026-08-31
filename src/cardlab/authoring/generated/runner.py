@@ -14,6 +14,15 @@ from ..review_format import (
 )
 from ..store import ReviewStore
 from . import GENERATED_CARDS, runtime_registry
+from .advanced_status_batch import (
+    AUTHORING_METADATA as ADVANCED_STATUS_BATCH_METADATA,
+)
+from .advanced_status_batch import (
+    SCENARIO_CARD_NAMES_ZH as ADVANCED_STATUS_BATCH_CARD_NAMES,
+)
+from .advanced_status_batch import (
+    build_review_scenario as build_advanced_status_batch_scenario,
+)
 from .core_cs2_023 import (
     AUTHORING_METADATA as CORE_CS2_023_METADATA,
 )
@@ -145,6 +154,16 @@ for tribe_card_id, tribe_metadata in TRIBE_POISON_BATCH_METADATA.items():
         build_tribe_poison_batch_scenario, tribe_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[tribe_card_id] = TRIBE_POISON_BATCH_CARD_NAMES
+
+for advanced_card_id, advanced_metadata in ADVANCED_STATUS_BATCH_METADATA.items():
+    CARD_MODULES[advanced_card_id] = (
+        "src/cardlab/authoring/generated/advanced_status_batch.py"
+    )
+    CARD_METADATA[advanced_card_id] = advanced_metadata
+    SCENARIO_BUILDERS[advanced_card_id] = partial(
+        build_advanced_status_batch_scenario, advanced_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[advanced_card_id] = ADVANCED_STATUS_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

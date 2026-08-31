@@ -4,6 +4,7 @@ from typing import Dict, Iterable
 
 from ...cards import CARDS
 from ...model import CardDef
+from .advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARDS
 from .core_cs2_023 import CARD as CORE_CS2_023
 from .core_cs2_179 import CARD as CORE_CS2_179
 from .core_ds1_185 import CARD as CORE_DS1_185
@@ -21,6 +22,7 @@ GENERATED_CARDS.update(KEYWORD_BATCH_CARDS)
 GENERATED_CARDS.update(DAMAGE_BATCH_CARDS)
 GENERATED_CARDS.update(STATUS_BATCH_CARDS)
 GENERATED_CARDS.update(TRIBE_POISON_BATCH_CARDS)
+GENERATED_CARDS.update(ADVANCED_STATUS_BATCH_CARDS)
 
 
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
@@ -37,6 +39,7 @@ __all__ = [
     "CORE_CS2_023",
     "CORE_CS2_179",
     "CORE_DS1_185",
+    "ADVANCED_STATUS_BATCH_CARDS",
     "DAMAGE_BATCH_CARDS",
     "GENERATED_CARDS",
     "KEYWORD_BATCH_CARDS",
