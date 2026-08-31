@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 class CardType(str, Enum):
     MINION = "minion"
     SPELL = "spell"
+    WEAPON = "weapon"
 
 
 class TargetMode(str, Enum):
@@ -22,6 +23,7 @@ class TargetMode(str, Enum):
 class ActionType(str, Enum):
     PLAY = "play"
     ATTACK = "attack"
+    HERO_ATTACK = "hero_attack"
     HERO_POWER = "hero_power"
     END_TURN = "end_turn"
 
@@ -58,6 +60,8 @@ class CardDef:
     divine_shield: bool = False
     poisonous: bool = False
     races: Tuple[str, ...] = ()
+    durability: int = 0
+    requires_weapon: bool = False
     overload: int = 0
 
 
@@ -99,6 +103,15 @@ class Minion:
 
 
 @dataclass
+class Weapon:
+    entity_id: int
+    card_id: str
+    attack: int
+    durability: int
+    lifesteal: bool = False
+
+
+@dataclass
 class PlayerState:
     hero_health: int = 30
     hero_armor: int = 0
@@ -113,6 +126,7 @@ class PlayerState:
     deck: List[str] = field(default_factory=list)
     hand: List[HandCard] = field(default_factory=list)
     board: List[Minion] = field(default_factory=list)
+    weapon: Optional[Weapon] = None
     overload_pending: int = 0
     overloaded_mana: int = 0
 

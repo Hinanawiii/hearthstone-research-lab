@@ -13,6 +13,7 @@ from .keyword_batch import CARDS as KEYWORD_BATCH_CARDS
 from .rlk_709 import CARD as RLK_709
 from .status_batch import CARDS as STATUS_BATCH_CARDS
 from .tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
+from .weapon_batch import CARDS as WEAPON_BATCH_CARDS
 
 GENERATED_CARDS: Dict[str, CardDef] = {
     card.card_id: card
@@ -23,6 +24,7 @@ GENERATED_CARDS.update(DAMAGE_BATCH_CARDS)
 GENERATED_CARDS.update(STATUS_BATCH_CARDS)
 GENERATED_CARDS.update(TRIBE_POISON_BATCH_CARDS)
 GENERATED_CARDS.update(ADVANCED_STATUS_BATCH_CARDS)
+GENERATED_CARDS.update(WEAPON_BATCH_CARDS)
 
 
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
@@ -46,5 +48,6 @@ __all__ = [
     "RLK_709",
     "STATUS_BATCH_CARDS",
     "TRIBE_POISON_BATCH_CARDS",
+    "WEAPON_BATCH_CARDS",
     "runtime_registry",
 ]

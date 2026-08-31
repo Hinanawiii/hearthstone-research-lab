@@ -17,6 +17,7 @@ from .model import (
     PlayerState,
     TargetMode,
     TargetRef,
+    Weapon,
 )
 
 
@@ -85,6 +86,8 @@ class Game:
             card = self.cards[hand_card.card_id]
             if card.cost > own.mana + own.temporary_mana:
                 continue
+            if card.requires_weapon and own.weapon is None:
+                continue
             if card.card_type == CardType.MINION and len(own.board) >= 7:
                 continue
             for target in self._valid_targets(
@@ -97,21 +100,7 @@ class Game:
             if card.target_mode == TargetMode.NONE:
                 actions.append(Action(ActionType.PLAY, hand_card.entity_id))
 
-        enemy = 1 - actor
-        taunts = [
-            m
-            for m in self.state.players[enemy].board
-            if m.taunt and not m.stealth and m.health > 0
-        ]
-        attack_targets: List[TargetRef]
-        if taunts:
-            attack_targets = [TargetRef.minion(enemy, minion.entity_id) for minion in taunts]
-        else:
-            attack_targets = [TargetRef.hero(enemy)] + [
-                TargetRef.minion(enemy, minion.entity_id)
-                for minion in self.state.players[enemy].board
-                if minion.health > 0 and not minion.stealth
-            ]
+        attack_targets = self._attack_targets(actor)
         for minion in own.board:
             if minion.can_attack(self.state.turn):
                 minion_targets = attack_targets
@@ -121,6 +110,16 @@ class Game:
                     Action(ActionType.ATTACK, minion.entity_id, target)
                     for target in minion_targets
                 )
+        if (
+            own.weapon is not None
+            and own.hero_attack > 0
+            and own.hero_attacks_this_turn == 0
+            and not own.hero_frozen
+        ):
+            actions.extend(
+                Action(ActionType.HERO_ATTACK, own.weapon.entity_id, target)
+                for target in attack_targets
+            )
 
         if not own.hero_power_used and own.mana + own.temporary_mana >= 2:
             actions.extend(
@@ -145,6 +144,8 @@ class Game:
             self._play_card(actor, action)
         elif action.action_type == ActionType.ATTACK:
             self._attack(actor, action)
+        elif action.action_type == ActionType.HERO_ATTACK:
+            self._hero_attack(actor, action)
         elif action.action_type == ActionType.HERO_POWER:
             self._spend_mana(self.state.players[actor], 2)
             self.state.players[actor].hero_power_used = True
@@ -191,6 +192,15 @@ class Game:
             )
             player.board.append(minion)
             played_minion = TargetRef.minion(actor, minion.entity_id)
+        elif card.card_type == CardType.WEAPON:
+            player.weapon = Weapon(
+                entity_id=self._entity_id(),
+                card_id=card.card_id,
+                attack=card.attack,
+                durability=card.durability,
+                lifesteal=card.lifesteal,
+            )
+            player.hero_attack = card.attack
         player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target, played_minion)
         self._cleanup_deaths()
@@ -245,6 +255,8 @@ class Game:
                 if effect.target != "owner_hero":
                     raise RuntimeError("unsupported armor target: {}".format(effect.target))
                 self.state.players[actor].hero_armor += effect.amount
+            elif effect.kind == "weapon_buff":
+                self._buff_weapon(actor, effect.attack, effect.amount)
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
@@ -360,6 +372,21 @@ class Game:
             ]
         raise RuntimeError("unsupported group target: {}".format(target))
 
+    def _attack_targets(self, actor: int) -> List[TargetRef]:
+        enemy = 1 - actor
+        taunts = [
+            minion
+            for minion in self.state.players[enemy].board
+            if minion.taunt and not minion.stealth and minion.health > 0
+        ]
+        if taunts:
+            return [TargetRef.minion(enemy, minion.entity_id) for minion in taunts]
+        return [TargetRef.hero(enemy)] + [
+            TargetRef.minion(enemy, minion.entity_id)
+            for minion in self.state.players[enemy].board
+            if minion.health > 0 and not minion.stealth
+        ]
+
     def _attack(self, actor: int, action: Action) -> None:
         attacker = self._find_minion(actor, action.source_id)
         target = action.target
@@ -388,6 +415,30 @@ class Game:
         if attacker.lifesteal and damage_dealt > 0:
             owner = self.state.players[actor]
             owner.hero_health = min(30, owner.hero_health + damage_dealt)
+        self._cleanup_deaths()
+        self._check_terminal()
+
+    def _hero_attack(self, actor: int, action: Action) -> None:
+        player = self.state.players[actor]
+        weapon = player.weapon
+        if weapon is None or weapon.entity_id != action.source_id:
+            raise IllegalAction("weapon entity not found")
+        target = action.target
+        if target is None:
+            raise IllegalAction("hero attack requires target")
+        player.hero_attacks_this_turn += 1
+        damage_dealt = self._damage(target, weapon.attack)
+        if target.kind == "hero":
+            retaliation = 0
+        else:
+            retaliation = self._find_minion(target.player, target.entity_id).attack
+        self._damage(TargetRef.hero(actor), retaliation)
+        if weapon.lifesteal and damage_dealt > 0:
+            player.hero_health = min(30, player.hero_health + damage_dealt)
+        weapon.durability -= 1
+        if weapon.durability <= 0:
+            player.weapon = None
+            player.hero_attack = 0
         self._cleanup_deaths()
         self._check_terminal()
 
@@ -570,6 +621,14 @@ class Game:
         minion = self._find_minion(target.player, target.entity_id)
         setattr(minion, keyword, True)
 
+    def _buff_weapon(self, actor: int, attack: int, durability: int) -> None:
+        player = self.state.players[actor]
+        if player.weapon is None:
+            raise IllegalAction("weapon effect requires an equipped weapon")
+        player.weapon.attack += attack
+        player.weapon.durability += durability
+        player.hero_attack = player.weapon.attack
+
     def _freeze(self, target: Optional[TargetRef]) -> None:
         if target is None:
             raise IllegalAction("freeze requires a target")
@@ -700,6 +759,7 @@ class Game:
             "deck_count": len(player.deck),
             "hand_count": len(player.hand),
             "board": [asdict(minion) for minion in player.board],
+            "weapon": asdict(player.weapon) if player.weapon is not None else None,
         }
         if include_hand:
             data["hand"] = [asdict(card) for card in player.hand]

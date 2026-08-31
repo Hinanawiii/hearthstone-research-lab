@@ -7,6 +7,7 @@ from .generated.advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARD
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
 from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
 from .generated.tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
+from .generated.weapon_batch import CARDS as WEAPON_BATCH_CARDS
 from .store import ReviewStore
 
 CLASSIFICATION_VERSION = "core-authoring-batches.v1"
@@ -151,6 +152,8 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
         or card_id in ADVANCED_STATUS_BATCH_CARDS
     ):
         return "stats_status_and_resources"
+    if card_id in WEAPON_BATCH_CARDS:
+        return "weapons_and_hero_combat"
     if card_type == "WEAPON" or "武器" in text or "英雄攻击" in text:
         return "weapons_and_hero_combat"
     if card_type == "LOCATION" or any(marker in text for marker in _SPECIAL_MARKERS):

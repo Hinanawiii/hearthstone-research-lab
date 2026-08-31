@@ -201,8 +201,24 @@ def _review_player(
             "board": [_review_minion(item) for item in player["board"]],
             "secrets": list(player.get("secrets", [])),
             "locations": list(player.get("locations", [])),
-            "weapon": player.get("weapon"),
+            "weapon": _review_weapon(player.get("weapon")),
         },
+    }
+
+
+def _review_weapon(weapon: Any) -> Optional[Dict[str, Any]]:
+    if weapon is None:
+        return None
+    item = _mapping(weapon, "weapon")
+    mechanics = []
+    if item.get("lifesteal"):
+        mechanics.append("吸血")
+    return {
+        "entity_id": int(item["entity_id"]),
+        "card_id": str(item["card_id"]),
+        "attack": int(item["attack"]),
+        "durability": int(item["durability"]),
+        "mechanics_zh": mechanics,
     }
 
 
@@ -422,7 +438,7 @@ def _render_state(
         board_text = _board_text(zones["board"], card_names_zh)
         lines.append(
             "- {}：英雄 {} 点生命、{} 点护甲{}；法力 {}/{}，临时法力 {}；"
-            "手牌 {}；牌库 {} 张；场上 {}。".format(
+            "手牌 {}；牌库 {} 张；武器 {}；场上 {}。".format(
                 item["role_zh"],
                 hero["health"],
                 hero["armor"],
@@ -432,6 +448,7 @@ def _render_state(
                 resources["temporary_mana"],
                 hand_text,
                 deck["count"],
+                _weapon_text(zones["weapon"], card_names_zh),
                 board_text,
             )
         )
@@ -454,6 +471,19 @@ def _cards_text(hand: Mapping[str, Any], card_names_zh: Mapping[str, str]) -> st
         for card in cards
     ]
     return "{} 张：{}".format(hand["count"], "、".join(card_ids))
+
+
+def _weapon_text(weapon: Any, card_names_zh: Mapping[str, str]) -> str:
+    if weapon is None:
+        return "无"
+    item = _mapping(weapon, "weapon")
+    mechanics = item.get("mechanics_zh", [])
+    return "{} {}/{}{}".format(
+        _card_reference(str(item["card_id"]), card_names_zh),
+        item["attack"],
+        item["durability"],
+        " [{}]".format("、".join(mechanics)) if mechanics else "",
+    )
 
 
 def _board_text(board: Any, card_names_zh: Mapping[str, str]) -> str:
