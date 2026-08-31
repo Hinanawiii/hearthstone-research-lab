@@ -16,6 +16,7 @@ class TargetMode(str, Enum):
     ANY_CHARACTER = "any_character"
     ANY_MINION = "any_minion"
     ENEMY_CHARACTER = "enemy_character"
+    ENEMY_MINION = "enemy_minion"
     FRIENDLY_MINION = "friendly_minion"
     FRIENDLY_UNDEAD = "friendly_undead"
 
@@ -37,6 +38,7 @@ class Effect:
     attack: int = 0
     health: int = 0
     keyword: str = ""
+    race: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,8 @@ class CardDef:
     races: Tuple[str, ...] = ()
     durability: int = 0
     requires_weapon: bool = False
+    target_condition: str = ""
+    target_optional_if_unavailable: bool = False
     overload: int = 0
 
 

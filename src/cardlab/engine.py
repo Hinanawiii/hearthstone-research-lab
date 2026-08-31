@@ -90,14 +90,18 @@ class Game:
                 continue
             if card.card_type == CardType.MINION and len(own.board) >= 7:
                 continue
-            for target in self._valid_targets(
+            target_mode = self._effective_target_mode(actor, card)
+            targets = self._valid_targets(
                 actor,
-                card.target_mode,
+                target_mode,
                 exclude_elusive=card.card_type == CardType.SPELL,
                 exclude_enemy_stealth=True,
-            ):
+            )
+            for target in targets:
                 actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
-            if card.target_mode == TargetMode.NONE:
+            if target_mode == TargetMode.NONE or (
+                card.target_optional_if_unavailable and not targets
+            ):
                 actions.append(Action(ActionType.PLAY, hand_card.entity_id))
 
         attack_targets = self._attack_targets(actor)
@@ -257,6 +261,25 @@ class Game:
                 self.state.players[actor].hero_armor += effect.amount
             elif effect.kind == "weapon_buff":
                 self._buff_weapon(actor, effect.attack, effect.amount)
+            elif effect.kind == "weapon_buff_if_friendly_race":
+                if any(
+                    effect.race in minion.races
+                    for minion in self.state.players[actor].board
+                ):
+                    self._buff_weapon(actor, effect.attack, effect.amount)
+            elif effect.kind == "buff_attack_by_weapon":
+                weapon = self.state.players[actor].weapon
+                if weapon is not None:
+                    target = self._single_effect_target(
+                        actor, effect.target, selected, played_minion
+                    )
+                    self._buff_minion(target, weapon.attack, 0)
+            elif effect.kind == "damage_if_weapon":
+                if self.state.players[actor].weapon is not None and selected is not None:
+                    self._damage(selected, effect.amount)
+            elif effect.kind == "damage_by_hero_attack":
+                if selected is not None:
+                    self._damage(selected, self.state.players[actor].hero_attack)
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
@@ -520,6 +543,15 @@ class Game:
                 for m in self.state.players[actor].board
                 if "UNDEAD" in m.races and (not exclude_elusive or not m.elusive)
             ]
+        if mode == TargetMode.ENEMY_MINION:
+            enemy = 1 - actor
+            return [
+                TargetRef.minion(enemy, minion.entity_id)
+                for minion in self.state.players[enemy].board
+                if minion.health > 0
+                and (not exclude_elusive or not minion.elusive)
+                and (not exclude_enemy_stealth or not minion.stealth)
+            ]
         if mode == TargetMode.ANY_MINION:
             return [
                 TargetRef.minion(player_index, minion.entity_id)
@@ -554,6 +586,15 @@ class Game:
                 )
             return targets
         raise RuntimeError("unknown target mode")
+
+    def _effective_target_mode(self, actor: int, card: CardDef) -> TargetMode:
+        if not card.target_condition:
+            return card.target_mode
+        if card.target_condition == "weapon_equipped":
+            if self.state.players[actor].weapon is None:
+                return TargetMode.NONE
+            return card.target_mode
+        raise RuntimeError("unknown target condition: {}".format(card.target_condition))
 
     def _enemy_characters(
         self,

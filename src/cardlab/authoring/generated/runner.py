@@ -23,6 +23,15 @@ from .advanced_status_batch import (
 from .advanced_status_batch import (
     build_review_scenario as build_advanced_status_batch_scenario,
 )
+from .conditional_weapon_batch import (
+    AUTHORING_METADATA as CONDITIONAL_WEAPON_BATCH_METADATA,
+)
+from .conditional_weapon_batch import (
+    SCENARIO_CARD_NAMES_ZH as CONDITIONAL_WEAPON_BATCH_CARD_NAMES,
+)
+from .conditional_weapon_batch import (
+    build_review_scenario as build_conditional_weapon_batch_scenario,
+)
 from .core_cs2_023 import (
     AUTHORING_METADATA as CORE_CS2_023_METADATA,
 )
@@ -177,6 +186,20 @@ for weapon_card_id, weapon_metadata in WEAPON_BATCH_METADATA.items():
         build_weapon_batch_scenario, weapon_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[weapon_card_id] = WEAPON_BATCH_CARD_NAMES
+
+for conditional_weapon_card_id, conditional_weapon_metadata in (
+    CONDITIONAL_WEAPON_BATCH_METADATA.items()
+):
+    CARD_MODULES[conditional_weapon_card_id] = (
+        "src/cardlab/authoring/generated/conditional_weapon_batch.py"
+    )
+    CARD_METADATA[conditional_weapon_card_id] = conditional_weapon_metadata
+    SCENARIO_BUILDERS[conditional_weapon_card_id] = partial(
+        build_conditional_weapon_batch_scenario, conditional_weapon_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[conditional_weapon_card_id] = (
+        CONDITIONAL_WEAPON_BATCH_CARD_NAMES
+    )
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
