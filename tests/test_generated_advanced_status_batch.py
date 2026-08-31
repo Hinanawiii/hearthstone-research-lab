@@ -23,7 +23,16 @@ from cardlab.authoring.review_format import (
     validate_review_document,
 )
 from cardlab.engine import Game
-from cardlab.model import Action, ActionType, HandCard, Minion, TargetRef
+from cardlab.model import (
+    Action,
+    ActionType,
+    CardDef,
+    CardType,
+    Effect,
+    HandCard,
+    Minion,
+    TargetRef,
+)
 
 EXPECTED_CARD_IDS = {
     "CORE_CS2_024",
@@ -176,3 +185,56 @@ def test_swapping_zero_attack_to_health_destroys_the_target() -> None:
         Action(ActionType.PLAY, 98_300, TargetRef.minion(enemy, 98_301))
     )
     assert opposing.board == []
+
+
+def test_blizzard_freezes_imp_summoned_by_an_on_damage_trigger() -> None:
+    registry = runtime_registry(["CORE_CS2_028"])
+    registry.update(
+        {
+            "BRM_006": CardDef(
+                "BRM_006",
+                "小鬼首领",
+                CardType.MINION,
+                3,
+                2,
+                4,
+                races=("DEMON",),
+                on_damage_effects=(Effect("summon", 1, card_id="BRM_006t"),),
+            ),
+            "BRM_006t": CardDef(
+                "BRM_006t",
+                "小鬼",
+                CardType.MINION,
+                1,
+                1,
+                1,
+                races=("DEMON",),
+                collectible=False,
+            ),
+        }
+    )
+    game = Game(card_registry=registry)
+    actor = game.state.active_player
+    enemy = 1 - actor
+    own = game.state.players[actor]
+    opposing = game.state.players[enemy]
+    own.mana = own.max_mana = 10
+    own.hand = [HandCard(98_400, "CORE_CS2_028")]
+    opposing.board = [
+        Minion(
+            98_401,
+            "BRM_006",
+            2,
+            4,
+            4,
+            races=("DEMON",),
+            summoned_turn=0,
+        )
+    ]
+
+    game.apply(Action(ActionType.PLAY, 98_400))
+
+    assert [(minion.card_id, minion.health, minion.frozen) for minion in opposing.board] == [
+        ("BRM_006", 2, True),
+        ("BRM_006t", 1, True),
+    ]

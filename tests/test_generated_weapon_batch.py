@@ -172,3 +172,31 @@ def test_equipping_a_new_weapon_replaces_the_previous_weapon() -> None:
         5,
         2,
     )
+
+
+def test_lifesteal_weapon_saves_a_hero_from_simultaneous_lethal_retaliation() -> None:
+    game = Game(card_registry=runtime_registry(["RLK_067"]))
+    actor = game.state.active_player
+    enemy = 1 - actor
+    own = game.state.players[actor]
+    opposing = game.state.players[enemy]
+    own.hero_health = 1
+    own.mana = own.max_mana = 10
+    own.hand = [HandCard(100_400, "RLK_067")]
+    opposing.board = [Minion(100_401, "CS2_182", 1, 5, 5, summoned_turn=0)]
+
+    game.apply(Action(ActionType.PLAY, 100_400))
+    weapon = own.weapon
+    assert weapon is not None
+    game.apply(
+        Action(
+            ActionType.HERO_ATTACK,
+            weapon.entity_id,
+            TargetRef.minion(enemy, 100_401),
+        )
+    )
+
+    assert own.hero_health == 5
+    assert game.state.terminal is False
+    assert own.weapon is not None and own.weapon.durability == 1
+    assert opposing.board == []

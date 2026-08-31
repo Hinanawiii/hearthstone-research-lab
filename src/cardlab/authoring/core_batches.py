@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Mapping, Sequence, Tuple
 from .generated.advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARDS
 from .generated.conditional_weapon_batch import CARDS as CONDITIONAL_WEAPON_BATCH_CARDS
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
+from .generated.deathrattle_batch import CARDS as DEATHRATTLE_BATCH_CARDS
 from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
 from .generated.summon_batch import CARDS as SUMMON_BATCH_CARDS
 from .generated.tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
@@ -162,7 +163,7 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
         return "special_actions_and_zones"
     if any(marker in text for marker in _EVENT_MARKERS):
         return "event_triggers_and_history"
-    if card_id in SUMMON_BATCH_CARDS or any(
+    if card_id in SUMMON_BATCH_CARDS or card_id in DEATHRATTLE_BATCH_CARDS or any(
         marker in text for marker in _SUMMON_DEATH_MARKERS
     ):
         return "summon_death_and_corpses"

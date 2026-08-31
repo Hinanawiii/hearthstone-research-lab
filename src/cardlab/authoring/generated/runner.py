@@ -68,6 +68,15 @@ from .damage_batch import (
 from .damage_batch import (
     build_review_scenario as build_damage_batch_scenario,
 )
+from .deathrattle_batch import (
+    AUTHORING_METADATA as DEATHRATTLE_BATCH_METADATA,
+)
+from .deathrattle_batch import (
+    SCENARIO_CARD_NAMES_ZH as DEATHRATTLE_BATCH_CARD_NAMES,
+)
+from .deathrattle_batch import (
+    build_review_scenario as build_deathrattle_batch_scenario,
+)
 from .keyword_batch import (
     AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
 )
@@ -213,6 +222,18 @@ for summon_card_id, summon_metadata in SUMMON_BATCH_METADATA.items():
         build_summon_batch_scenario, summon_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[summon_card_id] = SUMMON_BATCH_CARD_NAMES
+
+for deathrattle_card_id, deathrattle_metadata in DEATHRATTLE_BATCH_METADATA.items():
+    CARD_MODULES[deathrattle_card_id] = (
+        "src/cardlab/authoring/generated/deathrattle_batch.py"
+    )
+    CARD_METADATA[deathrattle_card_id] = deathrattle_metadata
+    SCENARIO_BUILDERS[deathrattle_card_id] = partial(
+        build_deathrattle_batch_scenario, deathrattle_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[deathrattle_card_id] = (
+        DEATHRATTLE_BATCH_CARD_NAMES
+    )
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

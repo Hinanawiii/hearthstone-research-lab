@@ -11,6 +11,7 @@ from .model import (
     ActionType,
     CardDef,
     CardType,
+    Effect,
     GameState,
     HandCard,
     Minion,
@@ -43,6 +44,9 @@ class Game:
         self.rng = random.Random(seed)
         self._next_entity_id = 1
         self.cards = dict(card_registry or CARDS)
+        self._pending_damage_triggers: List[
+            Tuple[int, Tuple[Effect, ...], TargetRef]
+        ] = []
         chosen = decks or (default_deck(), default_deck())
         self.state = GameState(
             players=[PlayerState(deck=list(chosen[0])), PlayerState(deck=list(chosen[1]))],
@@ -154,6 +158,7 @@ class Game:
             self._spend_mana(self.state.players[actor], 2)
             self.state.players[actor].hero_power_used = True
             self._damage(action.target, 1)
+            self._resolve_damage_triggers()
             self._cleanup_deaths()
             self._check_terminal()
         else:
@@ -197,6 +202,8 @@ class Game:
             player.board.append(minion)
             played_minion = TargetRef.minion(actor, minion.entity_id)
         elif card.card_type == CardType.WEAPON:
+            if player.weapon is not None:
+                self._destroy_weapon(actor)
             player.weapon = Weapon(
                 entity_id=self._entity_id(),
                 card_id=card.card_id,
@@ -217,7 +224,16 @@ class Game:
         selected: Optional[TargetRef],
         played_minion: Optional[TargetRef],
     ) -> None:
-        for effect in card.effects:
+        self._resolve_effect_sequence(actor, card.effects, selected, played_minion)
+
+    def _resolve_effect_sequence(
+        self,
+        actor: int,
+        effects: Tuple[Effect, ...],
+        selected: Optional[TargetRef],
+        played_minion: Optional[TargetRef],
+    ) -> None:
+        for effect in effects:
             if self.state.terminal:
                 return
             if effect.kind == "damage":
@@ -225,6 +241,7 @@ class Game:
                     actor, effect.target, selected, played_minion
                 )
                 self._damage(target, effect.amount)
+                self._resolve_damage_triggers()
             elif effect.kind == "heal":
                 target = self._single_effect_target(
                     actor, effect.target, selected, played_minion
@@ -277,9 +294,11 @@ class Game:
             elif effect.kind == "damage_if_weapon":
                 if self.state.players[actor].weapon is not None and selected is not None:
                     self._damage(selected, effect.amount)
+                    self._resolve_damage_triggers()
             elif effect.kind == "damage_by_hero_attack":
                 if selected is not None:
                     self._damage(selected, self.state.players[actor].hero_attack)
+                    self._resolve_damage_triggers()
             elif effect.kind == "summon":
                 for _ in range(effect.amount):
                     if not self._summon(actor, effect.card_id):
@@ -287,6 +306,15 @@ class Game:
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
+            elif effect.kind == "draw_each_player":
+                for player_index in range(len(self.state.players)):
+                    for _ in range(effect.amount):
+                        self._draw(player_index)
+            elif effect.kind == "add_to_hand":
+                for _ in range(effect.amount):
+                    self._add_to_hand(actor, effect.card_id)
+            elif effect.kind == "equip_weapon":
+                self._equip_weapon(actor, effect.card_id)
             elif effect.kind == "temporary_mana":
                 player = self.state.players[actor]
                 room = max(0, 10 - player.mana - player.temporary_mana)
@@ -297,6 +325,7 @@ class Game:
                     if not targets:
                         break
                     self._damage(self.rng.choice(targets), effect.amount)
+                    self._resolve_damage_triggers()
                     self._cleanup_deaths()
                     self._check_terminal()
                     if self.state.terminal:
@@ -305,6 +334,7 @@ class Game:
                 targets = self._group_targets(actor, effect.target, played_minion)
                 for target in targets:
                     self._damage(target, effect.amount)
+                self._resolve_damage_triggers()
                 self._cleanup_deaths()
                 self._check_terminal()
             elif effect.kind == "heal_all":
@@ -439,6 +469,7 @@ class Game:
                 defender_owner.hero_health = min(
                     30, defender_owner.hero_health + defender_damage_dealt
                 )
+        self._resolve_damage_triggers()
         if attacker.lifesteal and damage_dealt > 0:
             owner = self.state.players[actor]
             owner.hero_health = min(30, owner.hero_health + damage_dealt)
@@ -460,12 +491,12 @@ class Game:
         else:
             retaliation = self._find_minion(target.player, target.entity_id).attack
         self._damage(TargetRef.hero(actor), retaliation)
+        self._resolve_damage_triggers()
         if weapon.lifesteal and damage_dealt > 0:
             player.hero_health = min(30, player.hero_health + damage_dealt)
         weapon.durability -= 1
         if weapon.durability <= 0:
-            player.weapon = None
-            player.hero_attack = 0
+            self._destroy_weapon(actor)
         self._cleanup_deaths()
         self._check_terminal()
 
@@ -631,9 +662,23 @@ class Game:
                 minion.divine_shield = False
                 return 0
             minion.health -= amount
+            card = self.cards.get(minion.card_id)
+            if amount > 0 and card is not None and card.on_damage_effects:
+                self._pending_damage_triggers.append(
+                    (
+                        target.player,
+                        card.on_damage_effects,
+                        TargetRef.minion(target.player, minion.entity_id),
+                    )
+                )
             return amount
         else:
             raise IllegalAction("unknown target kind")
+
+    def _resolve_damage_triggers(self) -> None:
+        while self._pending_damage_triggers:
+            actor, effects, source = self._pending_damage_triggers.pop(0)
+            self._resolve_effect_sequence(actor, effects, None, source)
 
     def _heal(self, target: Optional[TargetRef], amount: int) -> None:
         if target is None:
@@ -673,6 +718,41 @@ class Game:
         player.weapon.attack += attack
         player.weapon.durability += durability
         player.hero_attack = player.weapon.attack
+
+    def _destroy_weapon(self, actor: int) -> None:
+        player = self.state.players[actor]
+        weapon = player.weapon
+        if weapon is None:
+            return
+        player.weapon = None
+        player.hero_attack = 0
+        card = self.cards.get(weapon.card_id)
+        if card is not None and card.deathrattle_effects:
+            self._resolve_effect_sequence(
+                actor,
+                card.deathrattle_effects,
+                None,
+                TargetRef(actor, "weapon", weapon.entity_id),
+            )
+
+    def _equip_weapon(self, actor: int, card_id: str) -> None:
+        try:
+            card = self.cards[card_id]
+        except KeyError as error:
+            raise RuntimeError("unknown equipped weapon: {}".format(card_id)) from error
+        if card.card_type != CardType.WEAPON:
+            raise RuntimeError("equip effect requires a weapon card: {}".format(card_id))
+        player = self.state.players[actor]
+        if player.weapon is not None:
+            self._destroy_weapon(actor)
+        player.weapon = Weapon(
+            entity_id=self._entity_id(),
+            card_id=card.card_id,
+            attack=card.attack,
+            durability=card.durability,
+            lifesteal=card.lifesteal,
+        )
+        player.hero_attack = card.attack
 
     def _summon(self, actor: int, card_id: str) -> bool:
         player = self.state.players[actor]
@@ -740,13 +820,29 @@ class Game:
         minion.temporary_attack_expires_turn = None
 
     def _cleanup_deaths(self) -> None:
-        for player in self.state.players:
+        pending_deathrattles: List[Tuple[int, Tuple[Effect, ...], TargetRef]] = []
+        for player_index, player in enumerate(self.state.players):
             survivors: List[Minion] = []
             for minion in player.board:
                 if minion.health > 0:
                     survivors.append(minion)
-                elif minion.reborn:
-                    card = self.cards[minion.card_id]
+                    continue
+                card = self.cards.get(minion.card_id)
+                if card is not None and card.deathrattle_effects:
+                    pending_deathrattles.append(
+                        (
+                            player_index,
+                            card.deathrattle_effects,
+                            TargetRef.minion(player_index, minion.entity_id),
+                        )
+                    )
+                if minion.reborn:
+                    if card is None:
+                        raise RuntimeError(
+                            "reborn minion is missing its card definition: {}".format(
+                                minion.card_id
+                            )
+                        )
                     survivors.append(
                         Minion(
                             entity_id=self._entity_id(),
@@ -768,6 +864,8 @@ class Game:
                         )
                     )
             player.board = survivors
+        for actor, effects, source in pending_deathrattles:
+            self._resolve_effect_sequence(actor, effects, None, source)
 
     def _check_terminal(self) -> None:
         dead = [index for index, p in enumerate(self.state.players) if p.hero_health <= 0]

@@ -54,6 +54,8 @@ class CardDef:
     charge: bool = False
     target_mode: TargetMode = TargetMode.NONE
     effects: Tuple[Effect, ...] = ()
+    on_damage_effects: Tuple[Effect, ...] = ()
+    deathrattle_effects: Tuple[Effect, ...] = ()
     collectible: bool = True
     stealth: bool = False
     lifesteal: bool = False
