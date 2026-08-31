@@ -619,6 +619,69 @@ class ReviewStore:
         detail = self.get_card(card_id)
         return [item for item in detail["questions"] if item["question_id"] in inserted]
 
+    def add_implementation_test_request(
+        self,
+        card_id: str,
+        prompt: str,
+        *,
+        requested_by: str = "human",
+    ) -> Dict[str, Any]:
+        prompt = prompt.strip()
+        requested_by = requested_by.strip() or "human"
+        if not prompt:
+            raise ValueError("implementation test prompt is required")
+        card = self.get_card(card_id)
+        current_status = str(card["implementation_status"])
+        if current_status not in {"under_review", "implementation_ready"}:
+            raise ValueError("implementation tests require a generated implementation")
+
+        timestamp = _now()
+        question_id = uuid.uuid4().hex
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO questions(
+                    question_id, card_id, category, prompt, rationale,
+                    blocking, asked_by, created_at
+                ) VALUES (?, ?, 'implementation_test', ?, ?, 0, ?, ?)
+                """,
+                (
+                    question_id,
+                    card_id,
+                    prompt,
+                    "由内部测评人员在首版实现核验阶段留给制卡 AI。",
+                    "{} -> authoring-llm".format(requested_by),
+                    timestamp,
+                ),
+            )
+            if current_status == "implementation_ready":
+                connection.execute(
+                    """
+                    UPDATE cards SET implementation_status = 'under_review',
+                        implementation_reviewed_by = ?, implementation_reviewed_at = ?,
+                        updated_at = ? WHERE card_id = ?
+                    """,
+                    (requested_by, timestamp, timestamp, card_id),
+                )
+            self._record_workflow_event(
+                connection,
+                card_id,
+                "implementation_test_requested",
+                requested_by,
+                prompt,
+                {
+                    "question_id": question_id,
+                    "from": current_status,
+                    "to": "under_review",
+                },
+                timestamp,
+            )
+
+        detail = self.get_card(card_id)
+        return next(
+            item for item in detail["questions"] if item["question_id"] == question_id
+        )
+
     def record_answer(
         self,
         question_id: str,
@@ -633,7 +696,8 @@ class ReviewStore:
             raise ValueError("answer is required")
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT card_id FROM questions WHERE question_id = ?", (question_id,)
+                "SELECT card_id, category FROM questions WHERE question_id = ?",
+                (question_id,),
             ).fetchone()
             if row is None:
                 raise KeyError("question not found: {}".format(question_id))
@@ -652,16 +716,22 @@ class ReviewStore:
             )
             answer_id = cursor.lastrowid
             card_id = str(row["card_id"])
-            connection.execute(
-                """
-                UPDATE cards SET generation_approved = 0, generation_approved_by = '',
-                    generation_approved_at = NULL, implementation_status = 'not_started',
-                    implementation_reviewed_by = '', implementation_reviewed_at = NULL,
-                    implementation_evidence_json = '{}', updated_at = ?
-                WHERE card_id = ?
-                """,
-                (_now(), card_id),
-            )
+            if str(row["category"]) == "implementation_test":
+                connection.execute(
+                    "UPDATE cards SET updated_at = ? WHERE card_id = ?",
+                    (_now(), card_id),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE cards SET generation_approved = 0, generation_approved_by = '',
+                        generation_approved_at = NULL, implementation_status = 'not_started',
+                        implementation_reviewed_by = '', implementation_reviewed_at = NULL,
+                        implementation_evidence_json = '{}', updated_at = ?
+                    WHERE card_id = ?
+                    """,
+                    (_now(), card_id),
+                )
         questions: List[Dict[str, Any]] = self.get_card(card_id)["questions"]
         question = next(
             item

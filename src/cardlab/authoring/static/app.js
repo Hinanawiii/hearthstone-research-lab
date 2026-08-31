@@ -183,20 +183,13 @@ function renderDetail() {
   approvalButton.className = card.generation_approved ? "secondary" : "";
   approvalButton.classList.toggle("hidden", !card.authoring_ready);
   const implementationApprovalButton = $("#implementation-approval-button");
-  const implementationEvidence = card.implementation_evidence || {};
-  const hasReviewEvidence = Boolean(
-    implementationEvidence.automated_tests
-    && implementationEvidence.scenario_document
-  );
-  const awaitingImplementationReview = card.implementation_status === "under_review";
-  implementationApprovalButton.classList.toggle("hidden", !awaitingImplementationReview);
-  implementationApprovalButton.disabled = awaitingImplementationReview && !hasReviewEvidence;
-  implementationApprovalButton.textContent = hasReviewEvidence
-    ? "核验准出"
-    : "核验材料不完整";
-  implementationApprovalButton.title = hasReviewEvidence
-    ? "人工确认代码、测试和前后局面后准出"
-    : "需要自动测试结果和固定格式核验局面";
+  const implementationCanBeReviewed = ["under_review", "implementation_ready"]
+    .includes(card.implementation_status);
+  implementationApprovalButton.className = card.ready_for_research ? "secondary" : "";
+  implementationApprovalButton.classList.toggle("hidden", !implementationCanBeReviewed);
+  implementationApprovalButton.textContent = card.ready_for_research ? "取消准出" : "核验准出";
+  const implementationAiTestButton = $("#implementation-ai-test-button");
+  implementationAiTestButton.classList.toggle("hidden", !implementationCanBeReviewed);
   renderImplementationReview(card);
   $("#question-summary").textContent = `${card.answered_count}/${card.question_count} 已回答，${card.needs_verification_count} 项等待实机验证`;
   renderQuestions(card.questions);
@@ -251,11 +244,28 @@ function renderQuestions(questions) {
   for (const question of questions) {
     const fragment = $("#question-template").content.cloneNode(true);
     const article = fragment.querySelector(".question");
-    fragment.querySelector(".category").textContent = question.category;
+    const implementationTest = question.category === "implementation_test";
+    fragment.querySelector(".category").textContent = implementationTest
+      ? "AI测试"
+      : question.category;
     const status = fragment.querySelector(".question-state");
-    status.textContent = question.blocking ? "阻塞" : "备注";
+    if (implementationTest) {
+      if (question.current_resolution === "answered") {
+        status.textContent = "测试结论已确认";
+      } else if (question.current_resolution === "needs_verification") {
+        status.textContent = "等待实机验证";
+      } else if (question.current_ai_assessment) {
+        status.textContent = "AI已提交，待人工确认";
+      } else {
+        status.textContent = "等待AI测试";
+      }
+    } else {
+      status.textContent = question.blocking ? "阻塞" : "备注";
+    }
     status.classList.toggle("resolved", question.current_resolution === "answered");
-    fragment.querySelector(".asked-by").textContent = `由 ${question.asked_by} 提出`;
+    fragment.querySelector(".asked-by").textContent = implementationTest
+      ? "内部人员留给制卡AI"
+      : `由 ${question.asked_by} 提出`;
     fragment.querySelector(".prompt").textContent = question.prompt;
     const rationale = fragment.querySelector(".rationale");
     rationale.textContent = question.rationale;
@@ -268,7 +278,7 @@ function renderQuestions(questions) {
       current.textContent = `等待实机验证：${question.current_answer}`;
       current.className = "current-answer verify";
     } else {
-      current.textContent = "尚未回答";
+      current.textContent = implementationTest ? "等待AI提交测试结论" : "尚未回答";
     }
     const form = fragment.querySelector(".answer-form");
     const assessment = question.current_ai_assessment;
@@ -364,17 +374,17 @@ $("#new-card-button").addEventListener("click", () => $("#card-dialog").showModa
 $("#add-question-button").addEventListener("click", () => $("#question-dialog").showModal());
 $("#close-card-dialog").addEventListener("click", () => $("#card-dialog").close());
 $("#close-question-dialog").addEventListener("click", () => $("#question-dialog").close());
-$("#close-implementation-review-dialog").addEventListener("click", () => {
-  $("#implementation-review-dialog").close();
-  $("#implementation-review-form").reset();
+$("#close-implementation-ai-test-dialog").addEventListener("click", () => {
+  $("#implementation-ai-test-dialog").close();
+  $("#implementation-ai-test-form").reset();
 });
 
-$("#implementation-approval-button").addEventListener("click", () => {
+$("#implementation-ai-test-button").addEventListener("click", () => {
   const card = state.selectedCard;
-  if (!card || card.implementation_status !== "under_review") return;
-  $("#implementation-review-form").reset();
-  $("#implementation-review-context").textContent = `${card.name}（${card.card_id}）`;
-  $("#implementation-review-dialog").showModal();
+  if (!card) return;
+  $("#implementation-ai-test-form").reset();
+  $("#implementation-ai-test-context").textContent = `${card.name}（${card.card_id}）`;
+  $("#implementation-ai-test-dialog").showModal();
 });
 
 $("#card-form").addEventListener("submit", async (event) => {
@@ -414,31 +424,46 @@ $("#question-form").addEventListener("submit", async (event) => {
   }
 });
 
-$("#implementation-review-form").addEventListener("submit", async (event) => {
+$("#implementation-ai-test-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const data = new FormData(form);
-  const reviewer = String(data.get("reviewer") || "").trim();
-  const note = String(data.get("note") || "").trim();
-  const existingEvidence = state.selectedCard.implementation_evidence || {};
-  const evidence = {
+  const prompt = String(data.get("prompt") || "").trim();
+  try {
+    await api(`/api/cards/${encodeURIComponent(state.selectedCardId)}/implementation-tests`, {
+      method: "POST",
+      body: JSON.stringify({ prompt, requested_by: "human" }),
+    });
+    $("#implementation-ai-test-dialog").close();
+    form.reset();
+    toast("问题已留给制卡AI测试");
+    await loadCards(state.selectedCardId);
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+
+$("#implementation-approval-button").addEventListener("click", async () => {
+  const card = state.selectedCard;
+  const cancel = card.ready_for_research;
+  const existingEvidence = card.implementation_evidence || {};
+  const evidence = cancel ? existingEvidence : {
     ...existingEvidence,
-    code_review: `人工核验通过（${reviewer}）`,
-    human_scenario_review: `人工核验通过（${reviewer}）`,
+    code_review: existingEvidence.code_review || "内部测评旁路准出",
+    automated_tests: existingEvidence.automated_tests || "内部测评旁路未单独记录",
+    human_scenario_review: existingEvidence.human_scenario_review || "内部测评旁路准出",
   };
   try {
     await api(`/api/cards/${encodeURIComponent(state.selectedCardId)}/implementation`, {
       method: "POST",
       body: JSON.stringify({
-        status: "implementation_ready",
-        reviewer,
-        note: note || "通过审核台完成人工实现核验",
+        status: cancel ? "under_review" : "implementation_ready",
+        reviewer: "human",
+        note: cancel ? "通过审核台取消实现准出" : "通过审核台一键准出",
         evidence,
       }),
     });
-    $("#implementation-review-dialog").close();
-    form.reset();
-    toast("实现核验已准出，卡牌进入研究就绪");
+    toast(cancel ? "已取消准出，退回实现核验" : "已准出，卡牌进入研究就绪");
     await loadCards(state.selectedCardId);
   } catch (error) {
     toast(error.message, true);

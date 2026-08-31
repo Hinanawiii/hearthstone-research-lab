@@ -82,6 +82,13 @@ class AuthoringServerTests(unittest.TestCase):
             implemented["card"]["implementation_evidence"]["human_scenario_review"],
             "approved",
         )
+        ai_test = self.request(
+            "/api/cards/MODERN_001/implementation-tests",
+            {"prompt": "请补测隐藏目标。", "requested_by": "internal-tester"},
+        )
+        self.assertEqual(ai_test["question"]["category"], "implementation_test")
+        self.assertEqual(ai_test["card"]["implementation_status"], "under_review")
+        self.assertTrue(ai_test["card"]["generation_approved"])
 
         proposal = self.request(
             "/api/research/proposals",
@@ -132,10 +139,11 @@ class AuthoringServerTests(unittest.TestCase):
             javascript = response.read().decode("utf-8")
 
         self.assertIn('id="implementation-approval-button"', html)
-        self.assertIn('id="implementation-review-dialog"', html)
-        self.assertIn('name="code_review_confirmed"', html)
-        self.assertIn('name="scenario_review_confirmed"', html)
-        self.assertIn('status: "implementation_ready"', javascript)
+        self.assertIn('id="implementation-ai-test-button"', html)
+        self.assertIn('id="implementation-ai-test-dialog"', html)
+        self.assertIn('name="prompt"', html)
+        self.assertIn('/implementation-tests', javascript)
+        self.assertIn('cancel ? "under_review" : "implementation_ready"', javascript)
 
 
 if __name__ == "__main__":

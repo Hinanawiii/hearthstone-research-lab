@@ -191,6 +191,17 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
                     result = self.store.add_questions(card_id, questions)
                     self._json(HTTPStatus.CREATED, {"questions": result})
                     return
+                if action == "implementation-tests":
+                    question = self.store.add_implementation_test_request(
+                        card_id,
+                        str(payload.get("prompt", "")),
+                        requested_by=str(payload.get("requested_by", "human")),
+                    )
+                    self._json(
+                        HTTPStatus.CREATED,
+                        {"question": question, "card": self.store.get_card(card_id)},
+                    )
+                    return
                 if action == "interview":
                     card = self.store.set_interview_complete(
                         card_id, bool(payload.get("complete"))

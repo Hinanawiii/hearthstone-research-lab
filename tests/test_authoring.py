@@ -110,6 +110,52 @@ class AuthoringReviewTests(unittest.TestCase):
         self.assertFalse(card["ready_to_generate"])
         self.assertFalse(card["generation_approved"])
 
+    def test_internal_ai_test_request_preserves_generation_and_reopens_review(self) -> None:
+        self.store.set_interview_complete("CAP_805", True)
+        self.store.approve_generation("CAP_805", "human-reviewer")
+        self.store.set_implementation_status("CAP_805", "generated", "generator")
+        self.store.set_implementation_status("CAP_805", "under_review", "reviewer")
+        evidence = {
+            "code_review": "internal",
+            "automated_tests": "passed",
+            "human_scenario_review": "internal",
+        }
+        self.store.set_implementation_status(
+            "CAP_805", "implementation_ready", "reviewer", evidence=evidence
+        )
+
+        question = self.store.add_implementation_test_request(
+            "CAP_805",
+            "请测试满手牌时是否仍会生成灵质。",
+            requested_by="internal-tester",
+        )
+        card = self.store.get_card("CAP_805")
+
+        self.assertEqual(question["category"], "implementation_test")
+        self.assertFalse(question["blocking"])
+        self.assertEqual(question["current_resolution"], "open")
+        self.assertEqual(question["asked_by"], "internal-tester -> authoring-llm")
+        self.assertTrue(card["generation_approved"])
+        self.assertTrue(card["ready_to_generate"])
+        self.assertFalse(card["ready_for_research"])
+        self.assertEqual(card["implementation_status"], "under_review")
+        self.assertEqual(card["implementation_evidence"], evidence)
+        self.assertEqual(
+            card["workflow_events"][-1]["event_type"],
+            "implementation_test_requested",
+        )
+
+        answered = self.store.record_answer(
+            question["question_id"],
+            "AI 测试结论已由人工确认。",
+            "internal-tester",
+        )
+        card = self.store.get_card("CAP_805")
+        self.assertEqual(answered["current_resolution"], "answered")
+        self.assertTrue(card["generation_approved"])
+        self.assertEqual(card["implementation_status"], "under_review")
+        self.assertEqual(card["implementation_evidence"], evidence)
+
     def test_latest_answer_controls_gate_without_losing_history(self) -> None:
         self.store.add_questions(
             "CAP_805",

@@ -42,6 +42,8 @@ cardlab review --db runs/authoring/review.db --port 8765
 - 查看同一问题的历次答案；
 - 在 AI 完成语义检查后结束本轮提问；
 - 一次批准所有已结束提问、问题数为零且尚未批准的卡牌。
+- 对首版实现一键准出或取消准出；
+- 给制卡 AI 留一条补测问题，等它提交结论后再由人工确认。
 
 ## 制卡门禁
 
@@ -55,7 +57,8 @@ cardlab review --db runs/authoring/review.db --port 8765
 
 问题问完并不会自动启动制卡。`needs_verification` 仍是未解决状态；即使一张卡没有澄清
 问题，也要经过人工批准。新增问题、修改来源语义、重新开放访谈或追加人工答案，都会撤销
-已有的生成批准和实现就绪状态。
+已有的生成批准和实现就绪状态。实现核验阶段留下的 AI 补测问题是例外：它会保留生成批准、
+现有实现和核验材料，但把已经准出的卡退回 `under_review`，等待新结论。
 
 页面顶部的批量按钮只处理问题数为零的卡牌。点击后会先显示数量并要求确认；有过澄清
 问题的卡牌仍要逐张审核，即使这些问题已经回答完毕。每张批量批准的卡牌都会保留独立的
@@ -171,6 +174,22 @@ Content-Type: application/json
 
 实现状态只能按 `not_started -> generated -> under_review -> implementation_ready` 推进；
 审查者也可以退回 `generated` 或标记为 `rejected`。
+
+内部测评人员可以从页面留下实现补测问题，也可以直接调用：
+
+```http
+POST /api/cards/JAIL_205/implementation-tests
+Content-Type: application/json
+
+{
+  "prompt": "请补测对手手牌已满时的结算。",
+  "requested_by": "internal-tester"
+}
+```
+
+这条问题不阻塞制卡门禁。若卡牌已经 `implementation_ready`，接口会保留现有实现与核验
+材料，并把它退回 `under_review`。制卡 AI 仍通过问题的 `ai-assessments` 接口提交测试结论；
+人工确认后再决定是否重新准出。
 
 读取制卡门禁、当前答案和完整回答历史：
 

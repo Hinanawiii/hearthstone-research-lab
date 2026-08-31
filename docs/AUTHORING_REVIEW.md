@@ -37,6 +37,8 @@ inspect AI research candidates and their sources, copy a candidate into the huma
 mark a question as requiring a client probe, inspect answer history, and close or reopen the LLM's
 interview pass. It can also approve all completed, zero-question cards in one confirmed action.
 Copying a candidate never saves it as a human answer.
+For a generated implementation, the reviewer can approve or revoke readiness with one click, or
+leave a focused test request for the authoring AI and confirm its result later.
 
 ## Generation gate
 
@@ -51,7 +53,9 @@ Authoring and research use three separate gates:
 Finishing the questions therefore does not start generation. A `needs_verification` record remains
 unresolved, and even a zero-question card needs explicit approval. A new question, a semantic source
 change, a reopened interview, or a new human answer revokes prior generation approval and
-implementation readiness.
+implementation readiness. An implementation test request is the exception: it preserves the
+generation approval, implementation, and existing evidence, but sends a ready card back to
+`under_review` until the new result is checked.
 
 The bulk action only selects in-scope cards whose interview is complete, whose question count is
 zero, and which are not already approved. Cards that ever raised a question remain subject to
@@ -172,6 +176,23 @@ Content-Type: application/json
 
 The normal path is `not_started -> generated -> under_review -> implementation_ready`; a reviewer
 may also send an implementation back to `generated` or mark it `rejected`.
+
+An internal reviewer can leave a focused implementation test from the page or through the API:
+
+```http
+POST /api/cards/JAIL_205/implementation-tests
+Content-Type: application/json
+
+{
+  "prompt": "Test the resolution when the opponent's hand is already full.",
+  "requested_by": "internal-tester"
+}
+```
+
+This question does not block the generation gate. If the card was `implementation_ready`, the
+endpoint keeps its implementation and evidence but moves it back to `under_review`. The authoring
+AI submits its result through the question's `ai-assessments` endpoint; a reviewer then decides
+whether to approve the implementation again.
 
 Read the gate, current decisions, and full answer history:
 

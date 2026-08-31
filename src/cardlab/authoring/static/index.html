@@ -73,6 +73,7 @@
           </div>
           <div class="gate-actions">
             <button id="implementation-approval-button" class="hidden">核验准出</button>
+            <button id="implementation-ai-test-button" class="secondary hidden">交给AI测试</button>
             <button id="generation-approval-button" class="secondary hidden"></button>
             <button id="interview-button"></button>
           </div>
@@ -137,27 +138,17 @@
       </form>
     </dialog>
 
-    <dialog id="implementation-review-dialog">
-      <form id="implementation-review-form">
+    <dialog id="implementation-ai-test-dialog">
+      <form id="implementation-ai-test-form">
         <div class="dialog-heading">
           <div>
-            <h2>实现核验准出</h2>
-            <p id="implementation-review-context" class="muted"></p>
+            <h2>交给 AI 测试</h2>
+            <p id="implementation-ai-test-context" class="muted"></p>
           </div>
-          <button id="close-implementation-review-dialog" type="button" class="quiet">关闭</button>
+          <button id="close-implementation-ai-test-dialog" type="button" class="quiet">关闭</button>
         </div>
-        <p class="muted">确认后，这张卡会进入“研究就绪”。如后续发现问题，仍可将实现退回审核。</p>
-        <label class="check">
-          <input name="code_review_confirmed" type="checkbox" required />
-          我已检查实现代码与卡面契约一致
-        </label>
-        <label class="check">
-          <input name="scenario_review_confirmed" type="checkbox" required />
-          我已核对中文前后局面、断言和特殊情况标注
-        </label>
-        <label>核验人<input name="reviewer" value="human" required /></label>
-        <label>核验备注<textarea name="note" rows="3" placeholder="可记录人工检查范围或发现的问题"></textarea></label>
-        <button type="submit">确认核验准出</button>
+        <label>希望 AI 补测的问题<textarea name="prompt" rows="5" required placeholder="例如：圣盾随从作为防守方时，吸血应按多少实际伤害结算？"></textarea></label>
+        <button type="submit">加入 AI 测试队列</button>
       </form>
     </dialog>
 
