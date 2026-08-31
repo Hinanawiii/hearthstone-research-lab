@@ -242,6 +242,15 @@ class Game:
                 )
                 self._damage(target, effect.amount)
                 self._resolve_damage_triggers()
+            elif effect.kind == "lifesteal_damage":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                damage_dealt = self._damage(target, effect.amount)
+                self._resolve_damage_triggers()
+                if damage_dealt > 0:
+                    player = self.state.players[actor]
+                    player.hero_health = min(30, player.hero_health + damage_dealt)
             elif effect.kind == "heal":
                 target = self._single_effect_target(
                     actor, effect.target, selected, played_minion
@@ -306,6 +315,22 @@ class Game:
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
+            elif effect.kind == "draw_if_hand_empty":
+                if not self.state.players[actor].hand:
+                    for _ in range(effect.amount):
+                        self._draw(actor)
+            elif effect.kind in {"draw_if_selected_dead", "draw_if_selected_survives"}:
+                if selected is None or selected.kind != "minion":
+                    raise RuntimeError("conditional draw requires a selected minion")
+                minion = self._find_minion(selected.player, selected.entity_id)
+                should_draw = (
+                    minion.health <= 0
+                    if effect.kind == "draw_if_selected_dead"
+                    else minion.health > 0
+                )
+                if should_draw:
+                    for _ in range(effect.amount):
+                        self._draw(actor)
             elif effect.kind == "draw_each_player":
                 for player_index in range(len(self.state.players)):
                     for _ in range(effect.amount):
@@ -354,6 +379,18 @@ class Game:
                     minion = self._find_minion(target.player, target.entity_id)
                     minion.health = effect.amount
                     minion.max_health = effect.amount
+            elif effect.kind == "destroy":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                if target is None or target.kind != "minion":
+                    raise RuntimeError("destroy requires a selected minion")
+                self._find_minion(target.player, target.entity_id).health = 0
+            elif effect.kind == "destroy_all_attack_at_least":
+                for player in self.state.players:
+                    for minion in player.board:
+                        if minion.attack >= effect.amount:
+                            minion.health = 0
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
 
@@ -572,6 +609,12 @@ class Game:
                 for m in self.state.players[actor].board
                 if not exclude_elusive or not m.elusive
             ]
+        if mode == TargetMode.FRIENDLY_CHARACTER:
+            return [TargetRef.hero(actor)] + [
+                TargetRef.minion(actor, m.entity_id)
+                for m in self.state.players[actor].board
+                if not exclude_elusive or not m.elusive
+            ]
         if mode == TargetMode.FRIENDLY_UNDEAD:
             return [
                 TargetRef.minion(actor, m.entity_id)
@@ -584,6 +627,16 @@ class Game:
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
                 if minion.health > 0
+                and (not exclude_elusive or not minion.elusive)
+                and (not exclude_enemy_stealth or not minion.stealth)
+            ]
+        if mode == TargetMode.DAMAGED_ENEMY_MINION:
+            enemy = 1 - actor
+            return [
+                TargetRef.minion(enemy, minion.entity_id)
+                for minion in self.state.players[enemy].board
+                if minion.health > 0
+                and minion.health < minion.max_health
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
             ]

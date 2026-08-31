@@ -23,6 +23,15 @@ from .advanced_status_batch import (
 from .advanced_status_batch import (
     build_review_scenario as build_advanced_status_batch_scenario,
 )
+from .composite_spell_batch import (
+    AUTHORING_METADATA as COMPOSITE_SPELL_BATCH_METADATA,
+)
+from .composite_spell_batch import (
+    SCENARIO_CARD_NAMES_ZH as COMPOSITE_SPELL_BATCH_CARD_NAMES,
+)
+from .composite_spell_batch import (
+    build_review_scenario as build_composite_spell_batch_scenario,
+)
 from .conditional_weapon_batch import (
     AUTHORING_METADATA as CONDITIONAL_WEAPON_BATCH_METADATA,
 )
@@ -233,6 +242,18 @@ for deathrattle_card_id, deathrattle_metadata in DEATHRATTLE_BATCH_METADATA.item
     )
     SCENARIO_CARD_NAME_CATALOGS[deathrattle_card_id] = (
         DEATHRATTLE_BATCH_CARD_NAMES
+    )
+
+for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.items():
+    CARD_MODULES[composite_card_id] = (
+        "src/cardlab/authoring/generated/composite_spell_batch.py"
+    )
+    CARD_METADATA[composite_card_id] = composite_metadata
+    SCENARIO_BUILDERS[composite_card_id] = partial(
+        build_composite_spell_batch_scenario, composite_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[composite_card_id] = (
+        COMPOSITE_SPELL_BATCH_CARD_NAMES
     )
 
 

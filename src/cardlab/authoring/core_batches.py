@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from .generated.advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARDS
+from .generated.composite_spell_batch import CARDS as COMPOSITE_SPELL_BATCH_CARDS
 from .generated.conditional_weapon_batch import CARDS as CONDITIONAL_WEAPON_BATCH_CARDS
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
 from .generated.deathrattle_batch import CARDS as DEATHRATTLE_BATCH_CARDS
@@ -149,6 +150,8 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
     text = str(card.get("source_text", ""))
     if card_id in DAMAGE_CONTRACTS:
         return "deterministic_damage"
+    if card_id in COMPOSITE_SPELL_BATCH_CARDS:
+        return "stats_status_and_resources"
     if (
         card_id in STATUS_BATCH_CARDS
         or card_id in TRIBE_POISON_BATCH_CARDS

@@ -18,7 +18,9 @@ class TargetMode(str, Enum):
     ENEMY_CHARACTER = "enemy_character"
     ENEMY_MINION = "enemy_minion"
     FRIENDLY_MINION = "friendly_minion"
+    FRIENDLY_CHARACTER = "friendly_character"
     FRIENDLY_UNDEAD = "friendly_undead"
+    DAMAGED_ENEMY_MINION = "damaged_enemy_minion"
 
 
 class ActionType(str, Enum):
