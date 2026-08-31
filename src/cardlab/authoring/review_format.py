@@ -216,9 +216,13 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         ("elusive", "扰魔"),
         ("rush", "突袭"),
         ("divine_shield", "圣盾"),
+        ("poisonous", "剧毒"),
     ):
         if minion.get(field):
             mechanics.append(label)
+    tags = dict(minion.get("tags", {}))
+    if minion.get("races"):
+        tags["races"] = list(minion["races"])
     return {
         "entity_id": int(minion["entity_id"]),
         "card_id": str(minion["card_id"]),
@@ -226,7 +230,7 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         "health": int(minion["health"]),
         "max_health": int(minion["max_health"]),
         "mechanics_zh": mechanics,
-        "tags": dict(minion.get("tags", {})),
+        "tags": tags,
     }
 
 
@@ -448,13 +452,22 @@ def _board_text(board: Any, card_names_zh: Mapping[str, str]) -> str:
     rendered = []
     for minion in board:
         item = _mapping(minion, "minion")
+        annotations = list(item["mechanics_zh"])
+        races = _mapping(item.get("tags", {}), "minion tags").get("races", [])
+        race_labels = {"UNDEAD": "亡灵"}
+        if races:
+            annotations.append(
+                "种族：{}".format(
+                    "/".join(race_labels.get(str(race), str(race)) for race in races)
+                )
+            )
         rendered.append(
             "{} {}/{}{}".format(
                 _card_reference(str(item["card_id"]), card_names_zh),
                 item["attack"],
                 item["health"],
-                " [{}]".format("、".join(item["mechanics_zh"]))
-                if item["mechanics_zh"]
+                " [{}]".format("、".join(annotations))
+                if annotations
                 else "",
             )
         )

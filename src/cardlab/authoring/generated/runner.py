@@ -69,6 +69,15 @@ from .status_batch import (
 from .status_batch import (
     build_review_scenario as build_status_batch_scenario,
 )
+from .tribe_poison_batch import (
+    AUTHORING_METADATA as TRIBE_POISON_BATCH_METADATA,
+)
+from .tribe_poison_batch import (
+    SCENARIO_CARD_NAMES_ZH as TRIBE_POISON_BATCH_CARD_NAMES,
+)
+from .tribe_poison_batch import (
+    build_review_scenario as build_tribe_poison_batch_scenario,
+)
 
 CARD_MODULES: Dict[str, str] = {
     "RLK_709": "src/cardlab/authoring/generated/rlk_709.py",
@@ -126,6 +135,16 @@ for status_card_id, status_metadata in STATUS_BATCH_METADATA.items():
         build_status_batch_scenario, status_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[status_card_id] = STATUS_BATCH_CARD_NAMES
+
+for tribe_card_id, tribe_metadata in TRIBE_POISON_BATCH_METADATA.items():
+    CARD_MODULES[tribe_card_id] = (
+        "src/cardlab/authoring/generated/tribe_poison_batch.py"
+    )
+    CARD_METADATA[tribe_card_id] = tribe_metadata
+    SCENARIO_BUILDERS[tribe_card_id] = partial(
+        build_tribe_poison_batch_scenario, tribe_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[tribe_card_id] = TRIBE_POISON_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

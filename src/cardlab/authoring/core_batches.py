@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
 from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
+from .generated.tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
 from .store import ReviewStore
 
 CLASSIFICATION_VERSION = "core-authoring-batches.v1"
@@ -143,7 +144,7 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
     text = str(card.get("source_text", ""))
     if card_id in DAMAGE_CONTRACTS:
         return "deterministic_damage"
-    if card_id in STATUS_BATCH_CARDS:
+    if card_id in STATUS_BATCH_CARDS or card_id in TRIBE_POISON_BATCH_CARDS:
         return "stats_status_and_resources"
     if card_type == "WEAPON" or "武器" in text or "英雄攻击" in text:
         return "weapons_and_hero_combat"

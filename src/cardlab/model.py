@@ -16,6 +16,7 @@ class TargetMode(str, Enum):
     ANY_MINION = "any_minion"
     ENEMY_CHARACTER = "enemy_character"
     FRIENDLY_MINION = "friendly_minion"
+    FRIENDLY_UNDEAD = "friendly_undead"
 
 
 class ActionType(str, Enum):
@@ -55,6 +56,8 @@ class CardDef:
     elusive: bool = False
     rush: bool = False
     divine_shield: bool = False
+    poisonous: bool = False
+    races: Tuple[str, ...] = ()
     overload: int = 0
 
 
@@ -81,6 +84,8 @@ class Minion:
     elusive: bool = False
     rush: bool = False
     divine_shield: bool = False
+    poisonous: bool = False
+    races: Tuple[str, ...] = ()
 
     def can_attack(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush

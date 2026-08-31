@@ -185,6 +185,8 @@ class Game:
                 elusive=card.elusive,
                 rush=card.rush,
                 divine_shield=card.divine_shield,
+                poisonous=card.poisonous,
+                races=card.races,
                 summoned_turn=self.state.turn,
             )
             player.board.append(minion)
@@ -356,6 +358,10 @@ class Game:
             defender_damage_dealt = self._damage(
                 TargetRef.minion(actor, attacker.entity_id), defender_damage
             )
+            if attacker.poisonous and damage_dealt > 0:
+                defender.health = 0
+            if defender.poisonous and defender_damage_dealt > 0:
+                attacker.health = 0
             if defender.lifesteal and defender_damage_dealt > 0:
                 defender_owner = self.state.players[target.player]
                 defender_owner.hero_health = min(
@@ -422,6 +428,12 @@ class Game:
                 TargetRef.minion(actor, m.entity_id)
                 for m in self.state.players[actor].board
                 if not exclude_elusive or not m.elusive
+            ]
+        if mode == TargetMode.FRIENDLY_UNDEAD:
+            return [
+                TargetRef.minion(actor, m.entity_id)
+                for m in self.state.players[actor].board
+                if "UNDEAD" in m.races and (not exclude_elusive or not m.elusive)
             ]
         if mode == TargetMode.ANY_MINION:
             return [
@@ -519,7 +531,7 @@ class Game:
     def _grant_minion_keyword(self, target: Optional[TargetRef], keyword: str) -> None:
         if target is None or target.kind != "minion":
             raise IllegalAction("keyword effect requires a minion target")
-        if keyword not in {"taunt", "elusive", "divine_shield"}:
+        if keyword not in {"taunt", "elusive", "divine_shield", "poisonous"}:
             raise RuntimeError("unsupported granted keyword: {}".format(keyword))
         minion = self._find_minion(target.player, target.entity_id)
         setattr(minion, keyword, True)
@@ -547,6 +559,8 @@ class Game:
                             elusive=card.elusive,
                             rush=card.rush,
                             divine_shield=card.divine_shield,
+                            poisonous=card.poisonous,
+                            races=card.races,
                             summoned_turn=self.state.turn,
                         )
                     )
