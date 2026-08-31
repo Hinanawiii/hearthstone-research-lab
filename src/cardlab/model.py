@@ -39,6 +39,7 @@ class Effect:
     health: int = 0
     keyword: str = ""
     race: str = ""
+    card_id: str = ""
 
 
 @dataclass(frozen=True)

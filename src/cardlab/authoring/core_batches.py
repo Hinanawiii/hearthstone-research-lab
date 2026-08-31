@@ -7,6 +7,7 @@ from .generated.advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARD
 from .generated.conditional_weapon_batch import CARDS as CONDITIONAL_WEAPON_BATCH_CARDS
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
 from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
+from .generated.summon_batch import CARDS as SUMMON_BATCH_CARDS
 from .generated.tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
 from .generated.weapon_batch import CARDS as WEAPON_BATCH_CARDS
 from .store import ReviewStore
@@ -161,7 +162,9 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
         return "special_actions_and_zones"
     if any(marker in text for marker in _EVENT_MARKERS):
         return "event_triggers_and_history"
-    if any(marker in text for marker in _SUMMON_DEATH_MARKERS):
+    if card_id in SUMMON_BATCH_CARDS or any(
+        marker in text for marker in _SUMMON_DEATH_MARKERS
+    ):
         return "summon_death_and_corpses"
     if any(marker in text for marker in _ZONE_MARKERS):
         return "hand_deck_and_random"

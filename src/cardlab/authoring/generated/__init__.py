@@ -13,6 +13,8 @@ from .damage_batch import CARDS as DAMAGE_BATCH_CARDS
 from .keyword_batch import CARDS as KEYWORD_BATCH_CARDS
 from .rlk_709 import CARD as RLK_709
 from .status_batch import CARDS as STATUS_BATCH_CARDS
+from .summon_batch import CARDS as SUMMON_BATCH_CARDS
+from .summon_batch import TOKEN_CARDS as SUMMON_BATCH_TOKEN_CARDS
 from .tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
 from .weapon_batch import CARDS as WEAPON_BATCH_CARDS
 
@@ -27,10 +29,14 @@ GENERATED_CARDS.update(TRIBE_POISON_BATCH_CARDS)
 GENERATED_CARDS.update(ADVANCED_STATUS_BATCH_CARDS)
 GENERATED_CARDS.update(WEAPON_BATCH_CARDS)
 GENERATED_CARDS.update(CONDITIONAL_WEAPON_BATCH_CARDS)
+GENERATED_CARDS.update(SUMMON_BATCH_CARDS)
+
+GENERATED_TOKEN_CARDS: Dict[str, CardDef] = dict(SUMMON_BATCH_TOKEN_CARDS)
 
 
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
     registry = dict(CARDS)
+    registry.update(GENERATED_TOKEN_CARDS)
     for card_id in card_ids:
         try:
             registry[card_id] = GENERATED_CARDS[card_id]
@@ -47,9 +53,12 @@ __all__ = [
     "CONDITIONAL_WEAPON_BATCH_CARDS",
     "DAMAGE_BATCH_CARDS",
     "GENERATED_CARDS",
+    "GENERATED_TOKEN_CARDS",
     "KEYWORD_BATCH_CARDS",
     "RLK_709",
     "STATUS_BATCH_CARDS",
+    "SUMMON_BATCH_CARDS",
+    "SUMMON_BATCH_TOKEN_CARDS",
     "TRIBE_POISON_BATCH_CARDS",
     "WEAPON_BATCH_CARDS",
     "runtime_registry",

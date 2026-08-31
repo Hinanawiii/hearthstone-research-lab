@@ -280,6 +280,10 @@ class Game:
             elif effect.kind == "damage_by_hero_attack":
                 if selected is not None:
                     self._damage(selected, self.state.players[actor].hero_attack)
+            elif effect.kind == "summon":
+                for _ in range(effect.amount):
+                    if not self._summon(actor, effect.card_id):
+                        break
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
@@ -669,6 +673,38 @@ class Game:
         player.weapon.attack += attack
         player.weapon.durability += durability
         player.hero_attack = player.weapon.attack
+
+    def _summon(self, actor: int, card_id: str) -> bool:
+        player = self.state.players[actor]
+        if len(player.board) >= 7:
+            return False
+        try:
+            card = self.cards[card_id]
+        except KeyError as error:
+            raise RuntimeError("unknown summoned card: {}".format(card_id)) from error
+        if card.card_type != CardType.MINION:
+            raise RuntimeError("summon effect requires a minion card: {}".format(card_id))
+        player.board.append(
+            Minion(
+                entity_id=self._entity_id(),
+                card_id=card.card_id,
+                attack=card.attack,
+                health=card.health,
+                max_health=card.health,
+                taunt=card.taunt,
+                charge=card.charge,
+                stealth=card.stealth,
+                lifesteal=card.lifesteal,
+                reborn=card.reborn,
+                elusive=card.elusive,
+                rush=card.rush,
+                divine_shield=card.divine_shield,
+                poisonous=card.poisonous,
+                races=card.races,
+                summoned_turn=self.state.turn,
+            )
+        )
+        return True
 
     def _freeze(self, target: Optional[TargetRef]) -> None:
         if target is None:

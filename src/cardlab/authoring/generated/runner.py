@@ -87,6 +87,9 @@ from .status_batch import (
 from .status_batch import (
     build_review_scenario as build_status_batch_scenario,
 )
+from .summon_batch import AUTHORING_METADATA as SUMMON_BATCH_METADATA
+from .summon_batch import SCENARIO_CARD_NAMES_ZH as SUMMON_BATCH_CARD_NAMES
+from .summon_batch import build_review_scenario as build_summon_batch_scenario
 from .tribe_poison_batch import (
     AUTHORING_METADATA as TRIBE_POISON_BATCH_METADATA,
 )
@@ -200,6 +203,16 @@ for conditional_weapon_card_id, conditional_weapon_metadata in (
     SCENARIO_CARD_NAME_CATALOGS[conditional_weapon_card_id] = (
         CONDITIONAL_WEAPON_BATCH_CARD_NAMES
     )
+
+for summon_card_id, summon_metadata in SUMMON_BATCH_METADATA.items():
+    CARD_MODULES[summon_card_id] = (
+        "src/cardlab/authoring/generated/summon_batch.py"
+    )
+    CARD_METADATA[summon_card_id] = summon_metadata
+    SCENARIO_BUILDERS[summon_card_id] = partial(
+        build_summon_batch_scenario, summon_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[summon_card_id] = SUMMON_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
