@@ -128,6 +128,15 @@ from .event_trigger_batch import (
 from .event_trigger_batch import (
     build_review_scenario as build_event_trigger_batch_scenario,
 )
+from .hero_weapon_mechanics_batch import (
+    AUTHORING_METADATA as HERO_WEAPON_MECHANICS_BATCH_METADATA,
+)
+from .hero_weapon_mechanics_batch import (
+    SCENARIO_CARD_NAMES_ZH as HERO_WEAPON_MECHANICS_BATCH_CARD_NAMES,
+)
+from .hero_weapon_mechanics_batch import (
+    build_review_scenario as build_hero_weapon_mechanics_batch_scenario,
+)
 from .keyword_batch import (
     AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
 )
@@ -321,6 +330,18 @@ for event_card_id, event_metadata in EVENT_TRIGGER_BATCH_METADATA.items():
     CARD_METADATA[event_card_id] = event_metadata
     SCENARIO_BUILDERS[event_card_id] = partial(build_event_trigger_batch_scenario, event_card_id)
     SCENARIO_CARD_NAME_CATALOGS[event_card_id] = EVENT_TRIGGER_BATCH_CARD_NAMES
+
+for hero_weapon_card_id, hero_weapon_metadata in HERO_WEAPON_MECHANICS_BATCH_METADATA.items():
+    CARD_MODULES[hero_weapon_card_id] = (
+        "src/cardlab/authoring/generated/hero_weapon_mechanics_batch.py"
+    )
+    CARD_METADATA[hero_weapon_card_id] = hero_weapon_metadata
+    SCENARIO_BUILDERS[hero_weapon_card_id] = partial(
+        build_hero_weapon_mechanics_batch_scenario, hero_weapon_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[hero_weapon_card_id] = (
+        HERO_WEAPON_MECHANICS_BATCH_CARD_NAMES
+    )
 
 for special_card_id, special_metadata in SPECIAL_ACTION_BATCH_METADATA.items():
     CARD_MODULES[special_card_id] = "src/cardlab/authoring/generated/special_action_batch.py"

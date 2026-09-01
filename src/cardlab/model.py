@@ -46,6 +46,7 @@ class Effect:
     attack: int = 0
     health: int = 0
     keyword: str = ""
+    keywords: Tuple[str, ...] = ()
     race: str = ""
     card_id: str = ""
     card_ids: Tuple[str, ...] = ()
@@ -118,6 +119,11 @@ class CardDef:
     runes: Tuple[str, ...] = ()
     spends_corpses: bool = False
     corpse_gain_multiplier: int = 1
+    cost_reduction_by_weapon_attack: bool = False
+    resummon_killed_minions_on_death: bool = False
+    weapon_attack_equals_armor: bool = False
+    weapon_cannot_attack_heroes: bool = False
+    prevents_hero_damage_by_losing_durability: bool = False
 
 
 @dataclass
@@ -173,6 +179,8 @@ class Weapon:
     attack: int
     durability: int
     lifesteal: bool = False
+    cannot_attack_heroes: bool = False
+    killed_minion_card_ids: Tuple[str, ...] = ()
 
 
 @dataclass

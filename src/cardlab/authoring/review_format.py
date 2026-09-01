@@ -220,12 +220,18 @@ def _review_weapon(weapon: Any) -> Optional[Dict[str, Any]]:
     mechanics = []
     if item.get("lifesteal"):
         mechanics.append("吸血")
+    if item.get("cannot_attack_heroes"):
+        mechanics.append("无法攻击英雄")
+    tags = {}
+    if item.get("killed_minion_card_ids"):
+        tags["killed_minion_card_ids"] = list(item["killed_minion_card_ids"])
     return {
         "entity_id": int(item["entity_id"]),
         "card_id": str(item["card_id"]),
         "attack": int(item["attack"]),
         "durability": int(item["durability"]),
         "mechanics_zh": mechanics,
+        "tags": tags,
     }
 
 

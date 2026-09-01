@@ -156,13 +156,18 @@ class Game:
                     Action(ActionType.ATTACK, minion.entity_id, target) for target in minion_targets
                 )
         if own.hero_attack > 0 and own.hero_attacks_this_turn == 0 and not own.hero_frozen:
+            hero_attack_targets = attack_targets
+            if own.weapon is not None and own.weapon.cannot_attack_heroes:
+                hero_attack_targets = [
+                    target for target in attack_targets if target.kind == "minion"
+                ]
             actions.extend(
                 Action(
                     ActionType.HERO_ATTACK,
                     own.weapon.entity_id if own.weapon is not None else None,
                     target,
                 )
-                for target in attack_targets
+                for target in hero_attack_targets
             )
 
         if not own.hero_power_used and own.mana + own.temporary_mana >= 2:
@@ -247,17 +252,7 @@ class Game:
             played_minion = TargetRef.minion(actor, minion.entity_id)
             self._refresh_dynamic_attack_bonuses()
         elif card.card_type == CardType.WEAPON:
-            if player.weapon is not None:
-                self._destroy_weapon(actor)
-            player.weapon = Weapon(
-                entity_id=self._entity_id(),
-                card_id=card.card_id,
-                attack=card.attack,
-                durability=card.durability,
-                lifesteal=card.lifesteal,
-            )
-            player.hero_attack = card.attack + player.hero_temporary_attack
-            self._refresh_dynamic_attack_bonuses()
+            self._equip_weapon(actor, card.card_id)
         elif card.card_type == CardType.LOCATION:
             player.locations.append(
                 Location(
@@ -390,6 +385,7 @@ class Game:
                 if effect.target != "owner_hero":
                     raise RuntimeError("unsupported armor target: {}".format(effect.target))
                 self.state.players[actor].hero_armor += effect.amount
+                self._refresh_dynamic_attack_bonuses()
             elif effect.kind == "weapon_buff":
                 self._buff_weapon(actor, effect.attack, effect.amount)
             elif effect.kind == "weapon_buff_if_friendly_race":
@@ -904,6 +900,53 @@ class Game:
                         effect.attack,
                         effect.health,
                     )
+            elif effect.kind == "random_grant_keywords_friendly":
+                candidates = [
+                    minion
+                    for minion in self.state.players[actor].board
+                    if minion.health > 0
+                ]
+                if candidates:
+                    chosen = self.rng.choice(candidates)
+                    target = TargetRef.minion(actor, chosen.entity_id)
+                    for keyword in effect.keywords:
+                        self._grant_minion_keyword(target, keyword)
+            elif effect.kind == "return_random_friendly_minion_to_hand_discount":
+                player = self.state.players[actor]
+                candidates = [minion for minion in player.board if minion.health > 0]
+                if candidates:
+                    chosen = self.rng.choice(candidates)
+                    player.board.remove(chosen)
+                    if len(player.hand) < 10:
+                        player.hand.append(
+                            HandCard(
+                                entity_id=self._entity_id(),
+                                card_id=chosen.card_id,
+                                cost_modifier=-effect.amount,
+                            )
+                        )
+                    self._refresh_dynamic_attack_bonuses()
+            elif effect.kind == "source_attacks_selected":
+                if played_minion is None or selected is None:
+                    continue
+                source = next(
+                    (
+                        minion
+                        for minion in self.state.players[actor].board
+                        if minion.entity_id == played_minion.entity_id
+                        and minion.health > 0
+                    ),
+                    None,
+                )
+                target_exists = selected.kind == "hero" or any(
+                    minion.entity_id == selected.entity_id and minion.health > 0
+                    for minion in self.state.players[selected.player].board
+                )
+                if source is not None and target_exists:
+                    self._attack(
+                        actor,
+                        Action(ActionType.ATTACK, source.entity_id, selected),
+                    )
             elif effect.kind == "draw_if_unused_mana":
                 player = self.state.players[actor]
                 if player.mana + player.temporary_mana > 0:
@@ -1172,6 +1215,9 @@ class Game:
         if target is None:
             raise IllegalAction("hero attack requires target")
         player.hero_attacks_this_turn += 1
+        defender_card_id: Optional[str] = None
+        if target.kind == "minion":
+            defender_card_id = self._find_minion(target.player, target.entity_id).card_id
         damage_dealt = self._damage(target, player.hero_attack)
         if target.kind == "hero":
             retaliation = 0
@@ -1179,14 +1225,24 @@ class Game:
             retaliation = self._find_minion(target.player, target.entity_id).attack
         self._damage(TargetRef.hero(actor), retaliation)
         self._resolve_damage_triggers()
+        if (
+            weapon is not None
+            and defender_card_id is not None
+            and self._find_minion(target.player, target.entity_id).health <= 0
+        ):
+            weapon_card = self.cards.get(weapon.card_id)
+            if weapon_card is not None and weapon_card.resummon_killed_minions_on_death:
+                weapon.killed_minion_card_ids += (defender_card_id,)
         if weapon is not None and weapon.lifesteal and damage_dealt > 0:
             player.hero_health = min(30, player.hero_health + damage_dealt)
-        if weapon is not None:
+        if weapon is not None and player.weapon is weapon:
             weapon.durability -= 1
             if weapon.durability <= 0:
                 self._destroy_weapon(actor)
         self._cleanup_deaths()
-        self._resolve_board_triggers("owner_hero_attack", owner=actor)
+        self._resolve_board_triggers(
+            "owner_hero_attack", owner=actor, selected_event_target=target
+        )
         self._cleanup_deaths()
         self._check_terminal()
 
@@ -1247,7 +1303,8 @@ class Game:
         player = self.state.players[player_index]
         if not player.deck:
             player.fatigue += 1
-            player.hero_health -= player.fatigue
+            self._damage(TargetRef.hero(player_index), player.fatigue)
+            self._check_terminal()
             return
         card_id = player.deck.pop()
         card = self.cards.get(card_id)
@@ -1314,6 +1371,10 @@ class Game:
         cost = card.cost + hand_card.cost_modifier
         if card.outcast_cost >= 0 and self._is_outcast(self.state.players[actor], hand_card):
             cost = card.outcast_cost
+        if card.cost_reduction_by_weapon_attack:
+            weapon = self.state.players[actor].weapon
+            if weapon is not None:
+                cost -= weapon.attack
         return max(0, cost)
 
     def _valid_targets(
@@ -1454,9 +1515,22 @@ class Game:
             raise IllegalAction("effect requires target")
         if target.kind == "hero":
             player = self.state.players[target.player]
+            weapon = player.weapon
+            weapon_card = self.cards.get(weapon.card_id) if weapon is not None else None
+            if (
+                amount > 0
+                and weapon is not None
+                and weapon_card is not None
+                and weapon_card.prevents_hero_damage_by_losing_durability
+            ):
+                weapon.durability -= 1
+                if weapon.durability <= 0:
+                    self._destroy_weapon(target.player)
+                return 0
             absorbed = min(player.hero_armor, amount)
             player.hero_armor -= absorbed
             player.hero_health -= amount - absorbed
+            self._refresh_dynamic_attack_bonuses()
             return amount
         elif target.kind == "minion":
             minion = self._find_minion(target.player, target.entity_id)
@@ -1494,6 +1568,7 @@ class Game:
         only_entity: Optional[int] = None,
         played_races: Tuple[str, ...] = (),
         played_spell_school: str = "",
+        selected_event_target: Optional[TargetRef] = None,
     ) -> None:
         effect_fields = {
             "owner_spell_cast": "on_owner_spell_cast_effects",
@@ -1559,12 +1634,20 @@ class Game:
             self._resolve_effect_sequence(
                 player_index,
                 effects,
-                None,
+                selected_event_target,
                 TargetRef.minion(player_index, entity_id),
             )
 
     def _refresh_dynamic_attack_bonuses(self) -> None:
         for player_index, player in enumerate(self.state.players):
+            if player.weapon is not None:
+                weapon_definition = self.cards.get(player.weapon.card_id)
+                if (
+                    weapon_definition is not None
+                    and weapon_definition.weapon_attack_equals_armor
+                ):
+                    player.weapon.attack = player.hero_armor
+                    player.hero_attack = player.hero_armor + player.hero_temporary_attack
             for recipient_index, minion in enumerate(player.board):
                 desired_aura_attack = 0
                 desired_aura_health = 0
@@ -1696,6 +1779,10 @@ class Game:
         player.hero_attack = player.hero_temporary_attack
         self._refresh_dynamic_attack_bonuses()
         card = self.cards.get(weapon.card_id)
+        if card is not None and card.resummon_killed_minions_on_death:
+            for card_id in weapon.killed_minion_card_ids:
+                if self._summon(actor, card_id) is None:
+                    break
         if card is not None and card.deathrattle_effects:
             self._resolve_effect_sequence(
                 actor,
@@ -1720,6 +1807,7 @@ class Game:
             attack=card.attack,
             durability=card.durability,
             lifesteal=card.lifesteal,
+            cannot_attack_heroes=card.weapon_cannot_attack_heroes,
         )
         player.hero_attack = card.attack + player.hero_temporary_attack
         self._refresh_dynamic_attack_bonuses()
