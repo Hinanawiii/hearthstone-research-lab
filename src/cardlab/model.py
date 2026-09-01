@@ -68,6 +68,10 @@ class CardDef:
     on_damage_effects: Tuple[Effect, ...] = ()
     deathrattle_effects: Tuple[Effect, ...] = ()
     on_owner_spell_cast_effects: Tuple[Effect, ...] = ()
+    on_any_spell_cast_effects: Tuple[Effect, ...] = ()
+    on_opponent_draw_effects: Tuple[Effect, ...] = ()
+    on_friendly_death_effects: Tuple[Effect, ...] = ()
+    on_friendly_divine_shield_lost_effects: Tuple[Effect, ...] = ()
     on_owner_hero_power_effects: Tuple[Effect, ...] = ()
     on_owner_hero_attack_effects: Tuple[Effect, ...] = ()
     on_owner_turn_end_effects: Tuple[Effect, ...] = ()
@@ -82,6 +86,7 @@ class CardDef:
     on_any_minion_damaged_effects: Tuple[Effect, ...] = ()
     on_attacked_effects: Tuple[Effect, ...] = ()
     on_attack_effects: Tuple[Effect, ...] = ()
+    on_attack_kill_effects: Tuple[Effect, ...] = ()
     collectible: bool = True
     stealth: bool = False
     lifesteal: bool = False
@@ -125,6 +130,10 @@ class CardDef:
     weapon_cannot_attack_heroes: bool = False
     prevents_hero_damage_by_losing_durability: bool = False
     randomizes_character_targets: bool = False
+    on_friendly_death_race: str = ""
+    spell_damage: int = 0
+    ignores_taunt_for_friendly_attacks: bool = False
+    transforms_in_hand_to_last_spell: bool = False
 
 
 @dataclass
@@ -135,6 +144,7 @@ class HandCard:
     health_bonus: int = 0
     cost_modifier: int = 0
     outside_starting_deck: bool = False
+    origin_card_id: str = ""
 
 
 @dataclass
@@ -220,6 +230,8 @@ class PlayerState:
     friendly_undead_died_since_last_turn: bool = False
     spells_played_this_turn: List[str] = field(default_factory=list)
     spells_played_previous_turn: List[str] = field(default_factory=list)
+    end_turn_enemy_damage: int = 0
+    healed_this_turn: bool = False
 
 
 @dataclass(frozen=True)
