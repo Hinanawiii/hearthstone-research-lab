@@ -185,6 +185,7 @@ def _review_player(
             "temporary_mana": int(player["temporary_mana"]),
             "overload_pending": int(player.get("overload_pending", 0)),
             "overloaded_mana": int(player.get("overloaded_mana", 0)),
+            "corpses": int(player.get("corpses", 0)),
             "fatigue": int(player["fatigue"]),
         },
         "zones": {
@@ -460,7 +461,7 @@ def _render_state(
         board_text = _board_text(zones["board"], card_names_zh)
         lines.append(
             "- {}：英雄 {} 点生命、{} 点护甲{}；法力 {}/{}，临时法力 {}；"
-            "手牌 {}；牌库 {} 张；武器 {}；场上 {}。".format(
+            "残骸 {}；手牌 {}；牌库 {} 张；武器 {}；场上 {}。".format(
                 item["role_zh"],
                 hero["health"],
                 hero["armor"],
@@ -468,6 +469,7 @@ def _render_state(
                 resources["mana"],
                 resources["max_mana"],
                 resources["temporary_mana"],
+                resources.get("corpses", 0),
                 hand_text,
                 deck["count"],
                 _weapon_text(zones["weapon"], card_names_zh),

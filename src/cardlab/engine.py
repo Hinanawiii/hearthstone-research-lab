@@ -314,9 +314,17 @@ class Game:
         selected: Optional[TargetRef],
         played_minion: Optional[TargetRef],
     ) -> None:
+        summoned_entities: List[TargetRef] = []
         for effect in effects:
             if self.state.terminal:
                 return
+            if effect.kind == "grant_keyword_summoned" and not summoned_entities:
+                continue
+            if effect.corpse_cost:
+                player = self.state.players[actor]
+                if player.corpses < effect.corpse_cost:
+                    continue
+                player.corpses -= effect.corpse_cost
             if effect.kind == "damage":
                 target = self._single_effect_target(actor, effect.target, selected, played_minion)
                 self._damage(target, effect.amount)
@@ -372,11 +380,47 @@ class Game:
                     self._resolve_damage_triggers()
             elif effect.kind == "summon":
                 for _ in range(effect.amount):
-                    if not self._summon(actor, effect.card_id):
+                    summoned = self._summon(actor, effect.card_id)
+                    if summoned is None:
                         break
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_sequence":
                 for card_id in effect.card_ids:
-                    if not self._summon(actor, card_id):
+                    summoned = self._summon(actor, card_id)
+                    if summoned is None:
+                        break
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "grant_keyword_summoned":
+                for target in summoned_entities:
+                    if any(
+                        minion.entity_id == target.entity_id
+                        for minion in self.state.players[actor].board
+                    ):
+                        self._grant_minion_keyword(target, effect.keyword)
+            elif effect.kind == "gain_corpses":
+                self.state.players[actor].corpses += effect.amount
+            elif effect.kind == "summon_up_to_corpses":
+                player = self.state.players[actor]
+                summon_count = min(effect.amount, player.corpses)
+                for _ in range(summon_count):
+                    summoned = self._summon(actor, effect.card_id)
+                    if summoned is None:
+                        break
+                    player.corpses -= 1
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "random_damage_spend_up_to_corpses":
+                player = self.state.players[actor]
+                spent = min(effect.amount, player.corpses)
+                player.corpses -= spent
+                for _ in range(spent):
+                    targets = self._enemy_characters(actor)
+                    if not targets:
+                        break
+                    self._damage(self.rng.choice(targets), effect.attack)
+                    self._resolve_damage_triggers()
+                    self._cleanup_deaths()
+                    self._check_terminal()
+                    if self.state.terminal:
                         break
             elif effect.kind == "summon_copy_if_selected_dead":
                 if selected is None or selected.kind != "minion":
@@ -1321,7 +1365,7 @@ class Game:
     def _grant_minion_keyword(self, target: Optional[TargetRef], keyword: str) -> None:
         if target is None or target.kind != "minion":
             raise IllegalAction("keyword effect requires a minion target")
-        if keyword not in {"taunt", "elusive", "divine_shield", "poisonous"}:
+        if keyword not in {"taunt", "elusive", "divine_shield", "poisonous", "reborn"}:
             raise RuntimeError("unsupported granted keyword: {}".format(keyword))
         minion = self._find_minion(target.player, target.entity_id)
         setattr(minion, keyword, True)
@@ -1405,10 +1449,10 @@ class Game:
         player.hero_attack = card.attack + player.hero_temporary_attack
         self._refresh_dynamic_attack_bonuses()
 
-    def _summon(self, actor: int, card_id: str) -> bool:
+    def _summon(self, actor: int, card_id: str) -> Optional[Minion]:
         player = self.state.players[actor]
         if len(player.board) >= 7:
-            return False
+            return None
         try:
             card = self.cards[card_id]
         except KeyError as error:
@@ -1441,7 +1485,7 @@ class Game:
             exclude_entity=minion.entity_id,
             played_races=card.races,
         )
-        return True
+        return minion
 
     def _freeze(self, target: Optional[TargetRef]) -> None:
         if target is None:
@@ -1483,6 +1527,8 @@ class Game:
                     survivors.append(minion)
                     continue
                 card = self.cards.get(minion.card_id)
+                if card is not None and card.leaves_corpse:
+                    player.corpses += 1
                 if card is not None and card.deathrattle_effects:
                     pending_deathrattles.append(
                         (
@@ -1587,6 +1633,7 @@ class Game:
             "temporary_mana": player.temporary_mana,
             "overload_pending": player.overload_pending,
             "overloaded_mana": player.overloaded_mana,
+            "corpses": player.corpses,
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
             "deck_count": len(player.deck),

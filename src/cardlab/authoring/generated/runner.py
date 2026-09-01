@@ -90,6 +90,9 @@ from .core_ds1_185 import (
 from .core_ds1_185 import (
     build_review_scenario as build_core_ds1_185_scenario,
 )
+from .corpse_batch import AUTHORING_METADATA as CORPSE_BATCH_METADATA
+from .corpse_batch import SCENARIO_CARD_NAMES_ZH as CORPSE_BATCH_CARD_NAMES
+from .corpse_batch import build_review_scenario as build_corpse_batch_scenario
 from .damage_batch import (
     AUTHORING_METADATA as DAMAGE_BATCH_METADATA,
 )
@@ -306,6 +309,12 @@ for special_card_id, special_metadata in SPECIAL_ACTION_BATCH_METADATA.items():
         build_special_action_batch_scenario, special_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[special_card_id] = SPECIAL_ACTION_BATCH_CARD_NAMES
+
+for corpse_card_id, corpse_metadata in CORPSE_BATCH_METADATA.items():
+    CARD_MODULES[corpse_card_id] = "src/cardlab/authoring/generated/corpse_batch.py"
+    CARD_METADATA[corpse_card_id] = corpse_metadata
+    SCENARIO_BUILDERS[corpse_card_id] = partial(build_corpse_batch_scenario, corpse_card_id)
+    SCENARIO_CARD_NAME_CATALOGS[corpse_card_id] = CORPSE_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

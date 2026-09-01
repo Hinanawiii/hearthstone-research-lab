@@ -47,6 +47,7 @@ class Effect:
     race: str = ""
     card_id: str = ""
     card_ids: Tuple[str, ...] = ()
+    corpse_cost: int = 0
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ class CardDef:
     combo_effects: Tuple[Effect, ...] = ()
     choose_one_effects: Tuple[Tuple[Effect, ...], ...] = ()
     choose_one_target_modes: Tuple[TargetMode, ...] = ()
+    leaves_corpse: bool = True
 
 
 @dataclass
@@ -184,6 +186,7 @@ class PlayerState:
     overload_pending: int = 0
     overloaded_mana: int = 0
     cards_played_this_turn: int = 0
+    corpses: int = 0
 
 
 @dataclass(frozen=True)
