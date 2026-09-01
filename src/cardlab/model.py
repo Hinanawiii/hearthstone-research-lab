@@ -74,6 +74,7 @@ class CardDef:
     on_friendly_summon_race: str = ""
     on_any_minion_damaged_effects: Tuple[Effect, ...] = ()
     on_attacked_effects: Tuple[Effect, ...] = ()
+    on_attack_effects: Tuple[Effect, ...] = ()
     collectible: bool = True
     stealth: bool = False
     lifesteal: bool = False
@@ -94,12 +95,19 @@ class CardDef:
     weapon_attack_bonus: int = 0
     charge_if_weapon: bool = False
     freezes_damaged_characters: bool = False
+    aura_attack: int = 0
+    aura_health: int = 0
+    aura_race: str = ""
+    aura_adjacent_only: bool = False
 
 
 @dataclass
 class HandCard:
     entity_id: int
     card_id: str
+    attack_bonus: int = 0
+    health_bonus: int = 0
+    cost_modifier: int = 0
 
 
 @dataclass
@@ -127,6 +135,8 @@ class Minion:
     active_damaged_attack_bonus: int = 0
     active_opponent_turn_attack_bonus: int = 0
     active_weapon_attack_bonus: int = 0
+    active_aura_attack_bonus: int = 0
+    active_aura_health_bonus: int = 0
 
     def can_attack_ignoring_freeze(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush

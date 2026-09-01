@@ -185,9 +185,9 @@ class Game:
             minion = Minion(
                 entity_id=self._entity_id(),
                 card_id=card.card_id,
-                attack=card.attack,
-                health=card.health,
-                max_health=card.health,
+                attack=card.attack + hand_card.attack_bonus,
+                health=card.health + hand_card.health_bonus,
+                max_health=card.health + hand_card.health_bonus,
                 taunt=card.taunt,
                 charge=card.charge,
                 stealth=card.stealth,
@@ -434,6 +434,15 @@ class Game:
                         actor, effect.target, selected, played_minion
                     )
                     self._buff_minion(target, effect.attack, effect.health)
+            elif effect.kind == "buff_hand_minions":
+                for hand_card in self.state.players[actor].hand:
+                    definition = self.cards.get(hand_card.card_id)
+                    if definition is None or definition.card_type != CardType.MINION:
+                        continue
+                    if effect.keyword == "TAUNT" and not definition.taunt:
+                        continue
+                    hand_card.attack_bonus += effect.attack
+                    hand_card.health_bonus += effect.health
             elif effect.kind == "random_damage":
                 for _ in range(effect.repeats):
                     targets = self._enemy_characters(actor)
@@ -445,6 +454,63 @@ class Game:
                     self._check_terminal()
                     if self.state.terminal:
                         break
+            elif effect.kind == "random_damage_other_characters":
+                for _ in range(effect.repeats):
+                    targets = self._group_targets(actor, "all_characters", played_minion)
+                    if played_minion is not None:
+                        targets = [target for target in targets if target != played_minion]
+                    if not targets:
+                        break
+                    self._damage(self.rng.choice(targets), effect.amount)
+                    self._resolve_damage_triggers()
+                    self._cleanup_deaths()
+                    self._check_terminal()
+                    if self.state.terminal:
+                        break
+            elif effect.kind == "random_lifesteal_damage_minions":
+                for _ in range(effect.repeats):
+                    candidates = [
+                        minion
+                        for minion in self.state.players[1 - actor].board
+                        if minion.health > 0
+                    ]
+                    if not candidates:
+                        break
+                    chosen = self.rng.choice(candidates)
+                    dealt = self._damage(
+                        TargetRef.minion(1 - actor, chosen.entity_id), effect.amount
+                    )
+                    self._resolve_damage_triggers()
+                    self._cleanup_deaths()
+                    if dealt > 0:
+                        player = self.state.players[actor]
+                        player.hero_health = min(30, player.hero_health + dealt)
+            elif effect.kind == "random_heal_friendly":
+                for _ in range(effect.repeats):
+                    heal_targets: List[TargetRef] = []
+                    player = self.state.players[actor]
+                    if player.hero_health < 30:
+                        heal_targets.append(TargetRef.hero(actor))
+                    heal_targets.extend(
+                        TargetRef.minion(actor, minion.entity_id)
+                        for minion in player.board
+                        if 0 < minion.health < minion.max_health
+                    )
+                    if not heal_targets:
+                        break
+                    self._heal(self.rng.choice(heal_targets), effect.amount)
+            elif effect.kind == "damage_two_random_enemy_minions_draw_deaths":
+                candidates = [
+                    minion for minion in self.state.players[1 - actor].board if minion.health > 0
+                ]
+                chosen_minions = self.rng.sample(candidates, min(2, len(candidates)))
+                for minion in chosen_minions:
+                    self._damage(TargetRef.minion(1 - actor, minion.entity_id), effect.amount)
+                self._resolve_damage_triggers()
+                deaths = sum(minion.health <= 0 for minion in chosen_minions)
+                self._cleanup_deaths()
+                for _ in range(deaths):
+                    self._draw(actor)
             elif effect.kind == "random_damage_distinct":
                 targets = self._enemy_characters(actor)
                 for _ in range(min(effect.repeats, len(targets))):
@@ -678,6 +744,7 @@ class Game:
         target = action.target
         if target is None:
             raise IllegalAction("attack requires target")
+        self._resolve_board_triggers("attacks", owner=actor, only_entity=attacker.entity_id)
         attacker.attacks_this_turn += 1
         attacker.stealth = False
         if target.kind == "hero":
@@ -1023,6 +1090,7 @@ class Game:
             "friendly_summon": "on_friendly_summon_effects",
             "any_minion_damaged": "on_any_minion_damaged_effects",
             "attacked": "on_attacked_effects",
+            "attacks": "on_attack_effects",
         }
         try:
             effect_field = effect_fields[event]
@@ -1080,7 +1148,34 @@ class Game:
 
     def _refresh_dynamic_attack_bonuses(self) -> None:
         for player_index, player in enumerate(self.state.players):
-            for minion in player.board:
+            for recipient_index, minion in enumerate(player.board):
+                desired_aura_attack = 0
+                desired_aura_health = 0
+                for source_index, source in enumerate(player.board):
+                    if source.entity_id == minion.entity_id or source.health <= 0:
+                        continue
+                    source_definition = self.cards.get(source.card_id)
+                    if source_definition is None:
+                        continue
+                    if (
+                        source_definition.aura_race
+                        and source_definition.aura_race not in minion.races
+                    ):
+                        continue
+                    if (
+                        source_definition.aura_adjacent_only
+                        and abs(source_index - recipient_index) != 1
+                    ):
+                        continue
+                    desired_aura_attack += source_definition.aura_attack
+                    desired_aura_health += source_definition.aura_health
+                minion.attack += desired_aura_attack - minion.active_aura_attack_bonus
+                health_difference = desired_aura_health - minion.active_aura_health_bonus
+                minion.health += health_difference
+                minion.max_health += health_difference
+                minion.active_aura_attack_bonus = desired_aura_attack
+                minion.active_aura_health_bonus = desired_aura_health
+
                 definition = self.cards.get(minion.card_id)
                 if definition is None:
                     continue
@@ -1171,6 +1266,8 @@ class Game:
         minion.active_damaged_attack_bonus = 0
         minion.active_opponent_turn_attack_bonus = 0
         minion.active_weapon_attack_bonus = 0
+        minion.active_aura_attack_bonus = 0
+        minion.active_aura_health_bonus = 0
         self._refresh_dynamic_attack_bonuses()
 
     def _destroy_weapon(self, actor: int) -> None:

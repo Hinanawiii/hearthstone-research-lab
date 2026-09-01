@@ -23,6 +23,13 @@ from .advanced_status_batch import (
 from .advanced_status_batch import (
     build_review_scenario as build_advanced_status_batch_scenario,
 )
+from .aura_hand_random_batch import AUTHORING_METADATA as AURA_HAND_RANDOM_BATCH_METADATA
+from .aura_hand_random_batch import (
+    SCENARIO_CARD_NAMES_ZH as AURA_HAND_RANDOM_BATCH_CARD_NAMES,
+)
+from .aura_hand_random_batch import (
+    build_review_scenario as build_aura_hand_random_batch_scenario,
+)
 from .composite_spell_batch import (
     AUTHORING_METADATA as COMPOSITE_SPELL_BATCH_METADATA,
 )
@@ -198,6 +205,12 @@ for advanced_card_id, advanced_metadata in ADVANCED_STATUS_BATCH_METADATA.items(
         build_advanced_status_batch_scenario, advanced_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[advanced_card_id] = ADVANCED_STATUS_BATCH_CARD_NAMES
+
+for aura_card_id, aura_metadata in AURA_HAND_RANDOM_BATCH_METADATA.items():
+    CARD_MODULES[aura_card_id] = "src/cardlab/authoring/generated/aura_hand_random_batch.py"
+    CARD_METADATA[aura_card_id] = aura_metadata
+    SCENARIO_BUILDERS[aura_card_id] = partial(build_aura_hand_random_batch_scenario, aura_card_id)
+    SCENARIO_CARD_NAME_CATALOGS[aura_card_id] = AURA_HAND_RANDOM_BATCH_CARD_NAMES
 
 for weapon_card_id, weapon_metadata in WEAPON_BATCH_METADATA.items():
     CARD_MODULES[weapon_card_id] = "src/cardlab/authoring/generated/weapon_batch.py"
