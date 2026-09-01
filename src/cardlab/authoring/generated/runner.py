@@ -195,6 +195,15 @@ from .special_action_batch import (
 from .special_action_batch import (
     build_review_scenario as build_special_action_batch_scenario,
 )
+from .special_zone_mechanics_batch import (
+    AUTHORING_METADATA as SPECIAL_ZONE_MECHANICS_BATCH_METADATA,
+)
+from .special_zone_mechanics_batch import (
+    SCENARIO_CARD_NAMES_ZH as SPECIAL_ZONE_MECHANICS_BATCH_CARD_NAMES,
+)
+from .special_zone_mechanics_batch import (
+    build_review_scenario as build_special_zone_mechanics_batch_scenario,
+)
 from .status_batch import (
     AUTHORING_METADATA as STATUS_BATCH_METADATA,
 )
@@ -340,9 +349,7 @@ for discovery_card_id, discovery_metadata in DISCOVERY_GENERATION_BATCH_METADATA
     SCENARIO_BUILDERS[discovery_card_id] = partial(
         build_discovery_generation_batch_scenario, discovery_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[discovery_card_id] = (
-        DISCOVERY_GENERATION_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[discovery_card_id] = DISCOVERY_GENERATION_BATCH_CARD_NAMES
 
 for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.items():
     CARD_MODULES[composite_card_id] = "src/cardlab/authoring/generated/composite_spell_batch.py"
@@ -378,9 +385,7 @@ for event_history_card_id, event_history_metadata in EVENT_HISTORY_MECHANICS_BAT
     SCENARIO_BUILDERS[event_history_card_id] = partial(
         build_event_history_mechanics_batch_scenario, event_history_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[event_history_card_id] = (
-        EVENT_HISTORY_MECHANICS_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[event_history_card_id] = EVENT_HISTORY_MECHANICS_BATCH_CARD_NAMES
 
 for hero_weapon_card_id, hero_weapon_metadata in HERO_WEAPON_MECHANICS_BATCH_METADATA.items():
     CARD_MODULES[hero_weapon_card_id] = (
@@ -390,9 +395,7 @@ for hero_weapon_card_id, hero_weapon_metadata in HERO_WEAPON_MECHANICS_BATCH_MET
     SCENARIO_BUILDERS[hero_weapon_card_id] = partial(
         build_hero_weapon_mechanics_batch_scenario, hero_weapon_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[hero_weapon_card_id] = (
-        HERO_WEAPON_MECHANICS_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[hero_weapon_card_id] = HERO_WEAPON_MECHANICS_BATCH_CARD_NAMES
 
 for hand_history_card_id, hand_history_metadata in HAND_HISTORY_UNIQUE_BATCH_METADATA.items():
     CARD_MODULES[hand_history_card_id] = (
@@ -402,9 +405,7 @@ for hand_history_card_id, hand_history_metadata in HAND_HISTORY_UNIQUE_BATCH_MET
     SCENARIO_BUILDERS[hand_history_card_id] = partial(
         build_hand_history_unique_batch_scenario, hand_history_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[hand_history_card_id] = (
-        HAND_HISTORY_UNIQUE_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[hand_history_card_id] = HAND_HISTORY_UNIQUE_BATCH_CARD_NAMES
 
 for special_card_id, special_metadata in SPECIAL_ACTION_BATCH_METADATA.items():
     CARD_MODULES[special_card_id] = "src/cardlab/authoring/generated/special_action_batch.py"
@@ -414,6 +415,16 @@ for special_card_id, special_metadata in SPECIAL_ACTION_BATCH_METADATA.items():
     )
     SCENARIO_CARD_NAME_CATALOGS[special_card_id] = SPECIAL_ACTION_BATCH_CARD_NAMES
 
+for special_zone_card_id, special_zone_metadata in SPECIAL_ZONE_MECHANICS_BATCH_METADATA.items():
+    CARD_MODULES[special_zone_card_id] = (
+        "src/cardlab/authoring/generated/special_zone_mechanics_batch.py"
+    )
+    CARD_METADATA[special_zone_card_id] = special_zone_metadata
+    SCENARIO_BUILDERS[special_zone_card_id] = partial(
+        build_special_zone_mechanics_batch_scenario, special_zone_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[special_zone_card_id] = SPECIAL_ZONE_MECHANICS_BATCH_CARD_NAMES
+
 for corpse_card_id, corpse_metadata in CORPSE_BATCH_METADATA.items():
     CARD_MODULES[corpse_card_id] = "src/cardlab/authoring/generated/corpse_batch.py"
     CARD_METADATA[corpse_card_id] = corpse_metadata
@@ -421,9 +432,7 @@ for corpse_card_id, corpse_metadata in CORPSE_BATCH_METADATA.items():
     SCENARIO_CARD_NAME_CATALOGS[corpse_card_id] = CORPSE_BATCH_CARD_NAMES
 
 for random_summon_card_id, random_summon_metadata in RANDOM_SUMMON_BATCH_METADATA.items():
-    CARD_MODULES[random_summon_card_id] = (
-        "src/cardlab/authoring/generated/random_summon_batch.py"
-    )
+    CARD_MODULES[random_summon_card_id] = "src/cardlab/authoring/generated/random_summon_batch.py"
     CARD_METADATA[random_summon_card_id] = random_summon_metadata
     SCENARIO_BUILDERS[random_summon_card_id] = partial(
         build_random_summon_batch_scenario, random_summon_card_id
@@ -431,9 +440,7 @@ for random_summon_card_id, random_summon_metadata in RANDOM_SUMMON_BATCH_METADAT
     SCENARIO_CARD_NAME_CATALOGS[random_summon_card_id] = RANDOM_SUMMON_BATCH_CARD_NAMES
 
 for zone_summon_card_id, zone_summon_metadata in ZONE_SUMMON_BATCH_METADATA.items():
-    CARD_MODULES[zone_summon_card_id] = (
-        "src/cardlab/authoring/generated/zone_summon_batch.py"
-    )
+    CARD_MODULES[zone_summon_card_id] = "src/cardlab/authoring/generated/zone_summon_batch.py"
     CARD_METADATA[zone_summon_card_id] = zone_summon_metadata
     SCENARIO_BUILDERS[zone_summon_card_id] = partial(
         build_zone_summon_batch_scenario, zone_summon_card_id
@@ -441,9 +448,7 @@ for zone_summon_card_id, zone_summon_metadata in ZONE_SUMMON_BATCH_METADATA.item
     SCENARIO_CARD_NAME_CATALOGS[zone_summon_card_id] = ZONE_SUMMON_BATCH_CARD_NAMES
 
 for death_history_card_id, death_history_metadata in DEATH_HISTORY_BATCH_METADATA.items():
-    CARD_MODULES[death_history_card_id] = (
-        "src/cardlab/authoring/generated/death_history_batch.py"
-    )
+    CARD_MODULES[death_history_card_id] = "src/cardlab/authoring/generated/death_history_batch.py"
     CARD_METADATA[death_history_card_id] = death_history_metadata
     SCENARIO_BUILDERS[death_history_card_id] = partial(
         build_death_history_batch_scenario, death_history_card_id
@@ -451,9 +456,7 @@ for death_history_card_id, death_history_metadata in DEATH_HISTORY_BATCH_METADAT
     SCENARIO_CARD_NAME_CATALOGS[death_history_card_id] = DEATH_HISTORY_BATCH_CARD_NAMES
 
 for rune_location_card_id, rune_location_metadata in RUNE_LOCATION_BATCH_METADATA.items():
-    CARD_MODULES[rune_location_card_id] = (
-        "src/cardlab/authoring/generated/rune_location_batch.py"
-    )
+    CARD_MODULES[rune_location_card_id] = "src/cardlab/authoring/generated/rune_location_batch.py"
     CARD_METADATA[rune_location_card_id] = rune_location_metadata
     SCENARIO_BUILDERS[rune_location_card_id] = partial(
         build_rune_location_batch_scenario, rune_location_card_id
@@ -486,10 +489,7 @@ def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
             raise ValueError(
                 "generated dependency is missing from source catalog: {}".format(dependency_id)
             ) from error
-        if (
-            dependency_id in GENERATED_TOKEN_CARDS
-            and source_dependency["name"] != dependency.name
-        ):
+        if dependency_id in GENERATED_TOKEN_CARDS and source_dependency["name"] != dependency.name:
             raise ValueError(
                 "generated dependency name differs from source catalog: {}".format(dependency_id)
             )

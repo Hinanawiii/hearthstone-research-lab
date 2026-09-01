@@ -95,7 +95,14 @@ class Game:
 
         for hand_card in own.hand:
             card = self.cards[hand_card.card_id]
-            if self._effective_card_cost(actor, hand_card, card) <= (own.mana + own.temporary_mana):
+            effective_cost = self._effective_card_cost(actor, hand_card, card)
+            uses_health = card.pays_health_if_healed and own.healed_this_turn
+            can_pay = (
+                own.hero_health > effective_cost
+                if uses_health
+                else effective_cost <= own.mana + own.temporary_mana
+            )
+            if can_pay:
                 if not card.requires_weapon or own.weapon is not None:
                     if card.card_type not in {CardType.MINION, CardType.LOCATION} or (
                         len(own.board) + len(own.locations) < 7
@@ -103,6 +110,41 @@ class Game:
                         if card.choose_one_effects:
                             if len(card.choose_one_effects) != len(card.choose_one_target_modes):
                                 raise RuntimeError("choose-one effects and target modes differ")
+                            if self._choose_both_active(actor):
+                                combined_modes = [
+                                    mode
+                                    for mode in card.choose_one_target_modes
+                                    if mode != TargetMode.NONE
+                                ]
+                                if combined_modes:
+                                    combined_targets: List[TargetRef] = []
+                                    for mode in combined_modes:
+                                        for target in self._valid_targets(
+                                            actor,
+                                            mode,
+                                            exclude_elusive=card.card_type == CardType.SPELL,
+                                            exclude_enemy_stealth=True,
+                                        ):
+                                            if target not in combined_targets:
+                                                combined_targets.append(target)
+                                    actions.extend(
+                                        Action(
+                                            ActionType.PLAY,
+                                            hand_card.entity_id,
+                                            target,
+                                            -1,
+                                        )
+                                        for target in combined_targets
+                                    )
+                                else:
+                                    actions.append(
+                                        Action(
+                                            ActionType.PLAY,
+                                            hand_card.entity_id,
+                                            choice=-1,
+                                        )
+                                    )
+                                continue
                             for choice, target_mode in enumerate(card.choose_one_target_modes):
                                 targets = self._valid_targets(
                                     actor,
@@ -145,6 +187,23 @@ class Game:
                 actions.append(Action(ActionType.TRADE, hand_card.entity_id))
 
         attack_targets = self._attack_targets(actor)
+        for location in own.locations:
+            if location.cooldown > 0 or location.durability <= 0:
+                continue
+            definition = self.cards.get(location.card_id)
+            if definition is None:
+                continue
+            targets = self._valid_targets(
+                actor,
+                definition.target_mode,
+                exclude_elusive=False,
+                exclude_enemy_stealth=True,
+            )
+            actions.extend(
+                Action(ActionType.LOCATION, location.entity_id, target) for target in targets
+            )
+            if definition.target_mode == TargetMode.NONE:
+                actions.append(Action(ActionType.LOCATION, location.entity_id))
         for minion in own.board:
             if minion.can_attack(self.state.turn):
                 minion_targets = attack_targets
@@ -170,7 +229,8 @@ class Game:
                 for target in hero_attack_targets
             )
 
-        if not own.hero_power_used and own.mana + own.temporary_mana >= 2:
+        hero_power_cost = 2 + own.next_hero_power_cost_increase
+        if not own.hero_power_used and own.mana + own.temporary_mana >= hero_power_cost:
             actions.extend(
                 Action(ActionType.HERO_POWER, target=target)
                 for target in self._valid_targets(
@@ -199,7 +259,9 @@ class Game:
         elif action.action_type == ActionType.HERO_ATTACK:
             self._hero_attack(actor, action)
         elif action.action_type == ActionType.HERO_POWER:
-            self._spend_mana(self.state.players[actor], 2)
+            hero_power_cost = 2 + self.state.players[actor].next_hero_power_cost_increase
+            self._spend_mana(self.state.players[actor], hero_power_cost)
+            self.state.players[actor].next_hero_power_cost_increase = 0
             self.state.players[actor].hero_power_used = True
             self._damage(action.target, 1)
             self._resolve_damage_triggers()
@@ -209,6 +271,8 @@ class Game:
             self._check_terminal()
         elif action.action_type == ActionType.DISCOVER:
             self._resolve_discover(actor, action)
+        elif action.action_type == ActionType.LOCATION:
+            self._activate_location(actor, action)
         else:
             raise IllegalAction("unknown action type")
         self.history.append(
@@ -227,8 +291,13 @@ class Game:
         card = self.cards[hand_card.card_id]
         was_outcast = self._is_outcast(player, hand_card)
         combo_active = player.cards_played_this_turn > 0
-        self._spend_mana(player, self._effective_card_cost(actor, hand_card, card))
+        effective_cost = self._effective_card_cost(actor, hand_card, card)
+        if card.pays_health_if_healed and player.healed_this_turn:
+            player.hero_health -= effective_cost
+        else:
+            self._spend_mana(player, effective_cost)
         player.hand.remove(hand_card)
+        self._consume_cost_modifiers(player, card)
         played_minion: Optional[TargetRef] = None
         if card.card_type == CardType.MINION:
             minion = Minion(
@@ -264,19 +333,23 @@ class Game:
             )
         player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target, played_minion)
-        spell_damage_bonus = (
-            self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
-        )
+        spell_damage_bonus = self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
         if card.choose_one_effects:
             if action.choice is None:
                 raise IllegalAction("choose-one card requires a choice")
-            self._resolve_effect_sequence(
-                actor,
-                card.choose_one_effects[action.choice],
-                action.target,
-                played_minion,
-                spell_damage_bonus=spell_damage_bonus,
+            choices = (
+                card.choose_one_effects
+                if action.choice == -1
+                else (card.choose_one_effects[action.choice],)
             )
+            for choice_effects in choices:
+                self._resolve_effect_sequence(
+                    actor,
+                    choice_effects,
+                    action.target,
+                    played_minion,
+                    spell_damage_bonus=spell_damage_bonus,
+                )
         if was_outcast and card.outcast_effects:
             self._resolve_effect_sequence(
                 actor,
@@ -308,6 +381,9 @@ class Game:
             )
             self._transform_dynamic_hand_cards(actor, card.card_id)
         elif card.card_type == CardType.MINION:
+            player.minion_types_played_this_turn.extend(
+                race for race in card.races if race not in player.minion_types_played_this_turn
+            )
             self._resolve_board_triggers(
                 "friendly_summon",
                 owner=actor,
@@ -337,9 +413,20 @@ class Game:
         insertion_index = self.rng.randrange(len(player.deck) + 1)
         self._ensure_deck_origin_flags(player)
         player.deck.insert(insertion_index, hand_card.card_id)
-        player.deck_outside_starting.insert(
-            insertion_index, hand_card.outside_starting_deck
-        )
+        player.deck_outside_starting.insert(insertion_index, hand_card.outside_starting_deck)
+        self._check_terminal()
+
+    def _activate_location(self, actor: int, action: Action) -> None:
+        location = self._find_location(actor, action.source_id)
+        if location.cooldown > 0 or location.durability <= 0:
+            raise IllegalAction("location is not ready")
+        definition = self.cards[location.card_id]
+        self._resolve_effect_sequence(actor, definition.effects, action.target, None)
+        location.durability -= 1
+        location.cooldown = 1
+        if location.durability <= 0:
+            self.state.players[actor].locations.remove(location)
+        self._cleanup_deaths()
         self._check_terminal()
 
     def _resolve_discover(self, actor: int, action: Action) -> None:
@@ -353,12 +440,20 @@ class Game:
         attack_bonus = self.state.pending_discover_attack_bonus
         health_bonus = self.state.pending_discover_health_bonus
         heal_by_cost = self.state.pending_discover_heal_by_cost
+        cost_modifier = self.state.pending_discover_cost_modifier
+        summon_choice = self.state.pending_discover_summon
+        freeze_choice = self.state.pending_discover_freeze
+        special_tags = self.state.pending_discover_special_tags
         self.state.pending_discover_player = None
         self.state.pending_discover_options = ()
         self.state.pending_discover_from_deck = False
         self.state.pending_discover_attack_bonus = 0
         self.state.pending_discover_health_bonus = 0
         self.state.pending_discover_heal_by_cost = False
+        self.state.pending_discover_cost_modifier = 0
+        self.state.pending_discover_summon = False
+        self.state.pending_discover_freeze = False
+        self.state.pending_discover_special_tags = ()
         player = self.state.players[actor]
         if from_deck and chosen_card_id in player.deck:
             self._ensure_deck_origin_flags(player)
@@ -367,14 +462,20 @@ class Game:
             chosen_outside_starting = player.deck_outside_starting.pop(deck_index)
         else:
             chosen_outside_starting = False
-        if len(player.hand) < 10:
+        if summon_choice:
+            summoned = self._summon(actor, chosen_card_id)
+            if summoned is not None and freeze_choice:
+                summoned.frozen = True
+        elif len(player.hand) < 10:
             player.hand.append(
                 HandCard(
                     self._entity_id(),
                     chosen_card_id,
                     attack_bonus=attack_bonus,
                     health_bonus=health_bonus,
+                    cost_modifier=cost_modifier,
                     outside_starting_deck=chosen_outside_starting,
+                    special_tags=special_tags,
                 )
             )
         if heal_by_cost:
@@ -382,6 +483,9 @@ class Game:
                 30,
                 player.hero_health + self.cards[chosen_card_id].cost,
             )
+        if self.state.pending_discover_queue:
+            next_candidates = self.state.pending_discover_queue.pop(0)
+            self._start_discover(actor, next_candidates)
 
     def _resolve_effects(
         self,
@@ -390,9 +494,7 @@ class Game:
         selected: Optional[TargetRef],
         played_minion: Optional[TargetRef],
     ) -> None:
-        spell_damage_bonus = (
-            self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
-        )
+        spell_damage_bonus = self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
         self._resolve_effect_sequence(
             actor,
             card.effects,
@@ -494,26 +596,19 @@ class Game:
                         summoned = self._summon(actor, card_id)
                         if summoned is None:
                             break
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_random":
                 summon_candidates = [
                     card_id
                     for card_id in effect.card_ids
-                    if card_id in self.cards
-                    and self.cards[card_id].card_type == CardType.MINION
+                    if card_id in self.cards and self.cards[card_id].card_type == CardType.MINION
                 ]
                 if summon_candidates:
                     for _ in range(self._summon_multiplier(actor)):
-                        summoned = self._summon(
-                            actor, self.rng.choice(summon_candidates)
-                        )
+                        summoned = self._summon(actor, self.rng.choice(summon_candidates))
                         if summoned is None:
                             break
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_random_hand_cost":
                 cost = len(self.state.players[actor].hand)
                 for _ in range(self._summon_multiplier(actor)):
@@ -570,9 +665,7 @@ class Game:
                         health_bonus=chosen_hand_card.health_bonus,
                     )
                     if summoned is not None:
-                        summoned_entities.append(
-                            TargetRef.minion(1 - actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(1 - actor, summoned.entity_id))
             elif effect.kind == "summon_random_demon_from_hand_and_deck":
                 player = self.state.players[actor]
                 summon_multiplier = self._summon_multiplier(actor)
@@ -594,15 +687,12 @@ class Game:
                         health_bonus=chosen_hand_card.health_bonus,
                     )
                     if summoned is not None:
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
                 for _ in range(summon_multiplier):
                     deck_candidates = [
                         index
                         for index, card_id in enumerate(player.deck)
-                        if card_id in self.cards
-                        and "DEMON" in self.cards[card_id].races
+                        if card_id in self.cards and "DEMON" in self.cards[card_id].races
                     ]
                     if not deck_candidates or len(player.board) >= 7:
                         break
@@ -612,9 +702,7 @@ class Game:
                     player.deck_outside_starting.pop(deck_index)
                     summoned = self._summon(actor, card_id)
                     if summoned is not None:
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "grant_keyword_summoned":
                 for target in summoned_entities:
                     if any(
@@ -636,9 +724,7 @@ class Game:
                     for _ in range(max(1, effect.amount)):
                         self._add_to_hand(actor, self.rng.choice(race_candidates))
             elif effect.kind == "add_random_from_pool":
-                pool_card_ids = [
-                    card_id for card_id in effect.card_ids if card_id in self.cards
-                ]
+                pool_card_ids = [card_id for card_id in effect.card_ids if card_id in self.cards]
                 if pool_card_ids:
                     for _ in range(max(1, effect.amount)):
                         self._add_to_hand(actor, self.rng.choice(pool_card_ids))
@@ -697,12 +783,33 @@ class Game:
                     attack_bonus=effect.attack,
                     health_bonus=effect.health,
                 )
+            elif effect.kind == "discover_from_pool_cost_discount":
+                self._start_discover(
+                    actor,
+                    effect.card_ids,
+                    cost_modifier=-effect.amount,
+                )
+            elif effect.kind == "discover_from_pool_summon_frozen":
+                self._start_discover(
+                    actor,
+                    effect.card_ids,
+                    summon_choice=True,
+                    freeze_choice=True,
+                )
+            elif effect.kind == "discover_beast_with_dark_gift_kindred":
+                kindred_active = (
+                    "BEAST" in self.state.players[actor].minion_types_played_previous_turn
+                )
+                self._start_discover(
+                    actor,
+                    effect.card_ids,
+                    cost_modifier=-1 if kindred_active else 0,
+                    special_tags=("dark_gift", "rewind_eligible"),
+                )
             elif effect.kind == "discover_from_pool_if_selected_dead":
                 if selected is None or selected.kind != "minion":
                     raise RuntimeError("conditional discover requires a minion target")
-                selected_minion = self._find_minion(
-                    selected.player, selected.entity_id
-                )
+                selected_minion = self._find_minion(selected.player, selected.entity_id)
                 if selected_minion.health <= 0:
                     self._start_discover(actor, effect.card_ids)
             elif effect.kind == "discover_from_pool_if_undead_died":
@@ -718,9 +825,7 @@ class Game:
                         if summoned is None:
                             break
                         successful_summons += 1
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
                     if not successful_summons:
                         break
                     player.corpses -= 1
@@ -755,9 +860,7 @@ class Game:
                 if source_snapshot is None:
                     raise RuntimeError("source-attack buff requires a death snapshot")
                 candidates = [
-                    minion
-                    for minion in self.state.players[actor].board
-                    if minion.health > 0
+                    minion for minion in self.state.players[actor].board if minion.health > 0
                 ]
                 if candidates:
                     chosen = self.rng.choice(candidates)
@@ -770,13 +873,10 @@ class Game:
                 graveyard_candidates = [
                     card_id
                     for card_id in self.state.players[actor].graveyard
-                    if card_id in self.cards
-                    and self.cards[card_id].card_type == CardType.MINION
+                    if card_id in self.cards and self.cards[card_id].card_type == CardType.MINION
                 ]
                 if graveyard_candidates:
-                    highest_cost = max(
-                        self.cards[card_id].cost for card_id in graveyard_candidates
-                    )
+                    highest_cost = max(self.cards[card_id].cost for card_id in graveyard_candidates)
                     highest_candidates = [
                         card_id
                         for card_id in graveyard_candidates
@@ -793,14 +893,10 @@ class Game:
                 ]
                 if rarity_candidates:
                     for _ in range(self._summon_multiplier(actor)):
-                        summoned = self._summon(
-                            actor, self.rng.choice(rarity_candidates)
-                        )
+                        summoned = self._summon(actor, self.rng.choice(rarity_candidates))
                         if summoned is None:
                             break
-                        summoned_entities.append(
-                            TargetRef.minion(actor, summoned.entity_id)
-                        )
+                        summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_copy_if_selected_dead":
                 if selected is None or selected.kind != "minion":
                     raise RuntimeError("copy summon requires a selected minion")
@@ -810,6 +906,12 @@ class Game:
             elif effect.kind == "draw":
                 for _ in range(effect.amount):
                     self._draw(actor)
+            elif effect.kind == "draw_with_cost_discount":
+                before_ids = {card.entity_id for card in self.state.players[actor].hand}
+                self._draw(actor)
+                for hand_card in self.state.players[actor].hand:
+                    if hand_card.entity_id not in before_ids:
+                        hand_card.cost_modifier -= effect.amount
             elif effect.kind == "draw_if_hand_empty":
                 if not self.state.players[actor].hand:
                     for _ in range(effect.amount):
@@ -888,9 +990,7 @@ class Game:
                         if not outside
                     ]
                     affected_player.deck = [card_id for card_id, _ in kept]
-                    affected_player.deck_outside_starting = [
-                        outside for _, outside in kept
-                    ]
+                    affected_player.deck_outside_starting = [outside for _, outside in kept]
             elif effect.kind == "return_previous_turn_spells":
                 for card_id in self.state.players[actor].spells_played_previous_turn:
                     self._add_to_hand(actor, card_id)
@@ -898,8 +998,7 @@ class Game:
                 spell_pool_ids = [
                     card_id
                     for card_id in effect.card_ids
-                    if card_id in self.cards
-                    and self.cards[card_id].card_type == CardType.SPELL
+                    if card_id in self.cards and self.cards[card_id].card_type == CardType.SPELL
                 ]
                 if spell_pool_ids:
                     opponent = self.state.players[1 - actor]
@@ -910,6 +1009,24 @@ class Game:
                 self._equip_weapon(actor, effect.card_id)
             elif effect.kind == "destroy_enemy_weapon":
                 self._destroy_weapon(1 - actor)
+            elif effect.kind == "grant_next_demon_discount":
+                self.state.players[actor].next_demon_discount += effect.amount
+            elif effect.kind == "grant_next_demon_cost_zero_this_turn":
+                self.state.players[actor].next_demon_cost_zero_this_turn = True
+            elif effect.kind == "grant_next_outcast_discount":
+                self.state.players[actor].next_outcast_discount += effect.amount
+            elif effect.kind == "tax_opponent_spells":
+                opponent = self.state.players[1 - actor]
+                opponent.spell_tax_remaining_turns = max(
+                    opponent.spell_tax_remaining_turns,
+                    effect.amount,
+                )
+            elif effect.kind == "tax_opponent_next_hero_power":
+                self.state.players[1 - actor].next_hero_power_cost_increase += effect.amount
+            elif effect.kind == "grant_next_combo_discount_this_turn":
+                self.state.players[actor].next_combo_discount_this_turn += effect.amount
+            elif effect.kind == "grant_next_spell_discount_this_turn":
+                self.state.players[actor].next_spell_discount_this_turn += effect.amount
             elif effect.kind == "temporary_mana":
                 player = self.state.players[actor]
                 room = max(0, 10 - player.mana - player.temporary_mana)
@@ -1132,8 +1249,7 @@ class Game:
                         (
                             minion
                             for minion in self.state.players[actor].board
-                            if minion.entity_id == played_minion.entity_id
-                            and minion.health > 0
+                            if minion.entity_id == played_minion.entity_id and minion.health > 0
                         ),
                         None,
                     )
@@ -1167,8 +1283,7 @@ class Game:
                     ]
                     for attacker_id in attacker_ids:
                         source_alive = any(
-                            minion.entity_id == source_entity_id
-                            and minion.health > 0
+                            minion.entity_id == source_entity_id and minion.health > 0
                             for minion in self.state.players[actor].board
                         )
                         attacker_alive = any(
@@ -1199,9 +1314,7 @@ class Game:
                 if source_snapshot is not None:
                     snapshot_definition = self.cards.get(source_snapshot.card_id)
                     if snapshot_definition is not None:
-                        self._summon_random_collectible_minion(
-                            actor, snapshot_definition.cost
-                        )
+                        self._summon_random_collectible_minion(actor, snapshot_definition.cost)
             elif effect.kind == "summon_from_deck_race":
                 player = self.state.players[actor]
                 for _ in range(effect.amount):
@@ -1219,9 +1332,7 @@ class Game:
                     self._summon(actor, card_id)
             elif effect.kind == "random_grant_keywords_friendly":
                 candidates = [
-                    minion
-                    for minion in self.state.players[actor].board
-                    if minion.health > 0
+                    minion for minion in self.state.players[actor].board if minion.health > 0
                 ]
                 if candidates:
                     chosen = self.rng.choice(candidates)
@@ -1250,8 +1361,7 @@ class Game:
                     (
                         minion
                         for minion in self.state.players[actor].board
-                        if minion.entity_id == played_minion.entity_id
-                        and minion.health > 0
+                        if minion.entity_id == played_minion.entity_id and minion.health > 0
                     ),
                     None,
                 )
@@ -1287,9 +1397,7 @@ class Game:
                 for target in self._group_targets(actor, effect.target, played_minion):
                     self._buff_minion(target, effect.attack, effect.health)
             elif effect.kind == "buff_and_attach_deathrattle":
-                target = self._single_effect_target(
-                    actor, effect.target, selected, played_minion
-                )
+                target = self._single_effect_target(actor, effect.target, selected, played_minion)
                 if target is None or target.kind != "minion":
                     raise RuntimeError("attached deathrattle requires a minion target")
                 self._buff_minion(target, effect.attack, effect.health)
@@ -1382,6 +1490,17 @@ class Game:
                     for minion in player.board:
                         minion.health = 0
                     player.locations = []
+            elif effect.kind == "summon_random_cost":
+                for _ in range(effect.amount):
+                    if self._summon_random_collectible_minion(actor, effect.attack) is None:
+                        break
+            elif effect.kind == "destroy_location":
+                if selected is None or selected.kind != "location":
+                    raise RuntimeError("destroy location requires a selected location")
+                location = self._find_location(selected.player, selected.entity_id)
+                self.state.players[selected.player].locations.remove(location)
+            elif effect.kind == "silence":
+                self._silence_minion(selected)
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
 
@@ -1460,8 +1579,7 @@ class Game:
     def _attack_targets(self, actor: int) -> List[TargetRef]:
         enemy = 1 - actor
         ignores_taunt = any(
-            definition is not None
-            and definition.ignores_taunt_for_friendly_attacks
+            definition is not None and definition.ignores_taunt_for_friendly_attacks
             for minion in self.state.players[actor].board
             if minion.health > 0
             for definition in (self.cards.get(minion.card_id),)
@@ -1627,9 +1745,7 @@ class Game:
             if weapon.durability <= 0:
                 self._destroy_weapon(actor)
         self._cleanup_deaths()
-        self._resolve_board_triggers(
-            "owner_hero_attack", owner=actor, selected_event_target=target
-        )
+        self._resolve_board_triggers("owner_hero_attack", owner=actor, selected_event_target=target)
         self._cleanup_deaths()
         self._check_terminal()
 
@@ -1662,8 +1778,15 @@ class Game:
         current.overloaded_mana = 0
         current.friendly_undead_died_since_last_turn = False
         current.healed_this_turn = False
+        current.next_demon_cost_zero_this_turn = False
+        current.next_combo_discount_this_turn = 0
+        current.next_spell_discount_this_turn = 0
+        if current.spell_tax_remaining_turns > 0:
+            current.spell_tax_remaining_turns -= 1
         current.spells_played_previous_turn = list(current.spells_played_this_turn)
         current.spells_played_this_turn = []
+        current.minion_types_played_previous_turn = list(current.minion_types_played_this_turn)
+        current.minion_types_played_this_turn = []
         self.state.active_player = 1 - self.state.active_player
         self._start_turn(self.state.active_player)
 
@@ -1680,6 +1803,8 @@ class Game:
         player.cards_played_this_turn = 0
         for minion in player.board:
             minion.attacks_this_turn = 0
+        for location in player.locations:
+            location.cooldown = max(0, location.cooldown - 1)
         self._refresh_dynamic_attack_bonuses()
         self._resolve_board_triggers("owner_turn_start", owner=player_index)
         self._cleanup_deaths()
@@ -1808,14 +1933,50 @@ class Game:
         )
 
     def _effective_card_cost(self, actor: int, hand_card: HandCard, card: CardDef) -> int:
+        player = self.state.players[actor]
         cost = card.cost + hand_card.cost_modifier
-        if card.outcast_cost >= 0 and self._is_outcast(self.state.players[actor], hand_card):
+        if card.outcast_cost >= 0 and self._is_outcast(player, hand_card):
             cost = card.outcast_cost
         if card.cost_reduction_by_weapon_attack:
             weapon = self.state.players[actor].weapon
             if weapon is not None:
                 cost -= weapon.attack
+        if "DEMON" in card.races:
+            if player.next_demon_cost_zero_this_turn:
+                cost = 0
+            else:
+                cost -= player.next_demon_discount
+        if card.is_outcast_card or card.outcast_effects or card.outcast_cost >= 0:
+            cost -= player.next_outcast_discount
+        if card.is_combo_card or card.combo_effects:
+            cost -= player.next_combo_discount_this_turn
+        if card.card_type == CardType.SPELL:
+            cost -= player.next_spell_discount_this_turn
+            if player.spell_tax_remaining_turns > 0:
+                cost += 1
         return max(0, cost)
+
+    @staticmethod
+    def _consume_cost_modifiers(player: PlayerState, card: CardDef) -> None:
+        if "DEMON" in card.races:
+            if player.next_demon_cost_zero_this_turn:
+                player.next_demon_cost_zero_this_turn = False
+            elif player.next_demon_discount:
+                player.next_demon_discount = 0
+        if card.is_outcast_card or card.outcast_effects or card.outcast_cost >= 0:
+            player.next_outcast_discount = 0
+        if card.is_combo_card or card.combo_effects:
+            player.next_combo_discount_this_turn = 0
+        if card.card_type == CardType.SPELL:
+            player.next_spell_discount_this_turn = 0
+
+    def _choose_both_active(self, actor: int) -> bool:
+        return any(
+            definition is not None and definition.choose_both_for_friendly
+            for minion in self.state.players[actor].board
+            if minion.health > 0
+            for definition in (self.cards.get(minion.card_id),)
+        )
 
     def _valid_targets(
         self,
@@ -1853,6 +2014,13 @@ class Game:
                 if minion.health > 0
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
+            ]
+        if mode == TargetMode.ENEMY_LOCATION:
+            enemy = 1 - actor
+            return [
+                TargetRef(enemy, "location", location.entity_id)
+                for location in self.state.players[enemy].locations
+                if location.durability > 0
             ]
         if mode == TargetMode.ENEMY_TAUNT_MINION:
             enemy = 1 - actor
@@ -1955,6 +2123,13 @@ class Game:
             raise IllegalAction("effect requires target")
         if target.kind == "hero":
             player = self.state.players[target.player]
+            if amount > 0 and any(
+                definition is not None and definition.grants_hero_immunity
+                for minion in player.board
+                if minion.health > 0
+                for definition in (self.cards.get(minion.card_id),)
+            ):
+                return 0
             weapon = player.weapon
             weapon_card = self.cards.get(weapon.card_id) if weapon is not None else None
             if (
@@ -2099,10 +2274,7 @@ class Game:
         for player_index, player in enumerate(self.state.players):
             if player.weapon is not None:
                 weapon_definition = self.cards.get(player.weapon.card_id)
-                if (
-                    weapon_definition is not None
-                    and weapon_definition.weapon_attack_equals_armor
-                ):
+                if weapon_definition is not None and weapon_definition.weapon_attack_equals_armor:
                     player.weapon.attack = player.hero_armor
                     player.hero_attack = player.hero_armor + player.hero_temporary_attack
             for recipient_index, minion in enumerate(player.board):
@@ -2233,6 +2405,35 @@ class Game:
         minion.active_aura_health_bonus = 0
         self._refresh_dynamic_attack_bonuses()
 
+    def _silence_minion(self, target: Optional[TargetRef]) -> None:
+        if target is None or target.kind != "minion":
+            raise IllegalAction("silence requires a minion target")
+        minion = self._find_minion(target.player, target.entity_id)
+        definition = self.cards[minion.card_id]
+        damage_taken = max(0, minion.max_health - minion.health)
+        minion.attack = definition.attack
+        minion.max_health = definition.health
+        minion.health = definition.health - damage_taken
+        minion.taunt = False
+        minion.charge = False
+        minion.stealth = False
+        minion.lifesteal = False
+        minion.reborn = False
+        minion.elusive = False
+        minion.rush = False
+        minion.divine_shield = False
+        minion.poisonous = False
+        minion.frozen = False
+        minion.temporary_attack = 0
+        minion.temporary_attack_expires_turn = None
+        minion.active_damaged_attack_bonus = 0
+        minion.active_opponent_turn_attack_bonus = 0
+        minion.active_weapon_attack_bonus = 0
+        minion.active_aura_attack_bonus = 0
+        minion.active_aura_health_bonus = 0
+        minion.attached_deathrattle_effects = ()
+        self._refresh_dynamic_attack_bonuses()
+
     def _destroy_weapon(self, actor: int) -> None:
         player = self.state.players[actor]
         weapon = player.weapon
@@ -2357,8 +2558,7 @@ class Game:
                 current_definition is not None
                 and current_definition.transforms_in_hand_to_last_spell
             ) and not (
-                origin_definition is not None
-                and origin_definition.transforms_in_hand_to_last_spell
+                origin_definition is not None and origin_definition.transforms_in_hand_to_last_spell
             ):
                 continue
             if not hand_card.origin_card_id:
@@ -2400,31 +2600,36 @@ class Game:
         attack_bonus: int = 0,
         health_bonus: int = 0,
         heal_by_cost: bool = False,
+        cost_modifier: int = 0,
+        summon_choice: bool = False,
+        freeze_choice: bool = False,
+        special_tags: Tuple[str, ...] = (),
     ) -> None:
         if self.state.pending_discover_player is not None:
-            raise RuntimeError("nested discover choices are not supported")
-        candidates = list(dict.fromkeys(card_id for card_id in candidate_ids if card_id in self.cards))
+            self.state.pending_discover_queue.append(candidate_ids)
+            return
+        candidates = list(
+            dict.fromkeys(card_id for card_id in candidate_ids if card_id in self.cards)
+        )
         if not candidates:
             return
         option_count = min(3, len(candidates))
         self.state.pending_discover_player = actor
-        self.state.pending_discover_options = tuple(
-            self.rng.sample(candidates, option_count)
-        )
+        self.state.pending_discover_options = tuple(self.rng.sample(candidates, option_count))
         self.state.pending_discover_from_deck = from_deck
         self.state.pending_discover_attack_bonus = attack_bonus
         self.state.pending_discover_health_bonus = health_bonus
         self.state.pending_discover_heal_by_cost = heal_by_cost
+        self.state.pending_discover_cost_modifier = cost_modifier
+        self.state.pending_discover_summon = summon_choice
+        self.state.pending_discover_freeze = freeze_choice
+        self.state.pending_discover_special_tags = special_tags
 
-    def _summon_random_collectible_minion(
-        self, actor: int, cost: int
-    ) -> Optional[Minion]:
+    def _summon_random_collectible_minion(self, actor: int, cost: int) -> Optional[Minion]:
         candidates = [
             card.card_id
             for card in self.cards.values()
-            if card.collectible
-            and card.card_type == CardType.MINION
-            and card.cost == cost
+            if card.collectible and card.card_type == CardType.MINION and card.cost == cost
         ]
         if not candidates:
             return None
@@ -2462,9 +2667,7 @@ class Game:
         minion.temporary_attack_expires_turn = None
 
     def _cleanup_deaths(self) -> None:
-        pending_deathrattles: List[
-            Tuple[int, Tuple[Effect, ...], TargetRef, Minion]
-        ] = []
+        pending_deathrattles: List[Tuple[int, Tuple[Effect, ...], TargetRef, Minion]] = []
         death_events: List[Tuple[int, Tuple[str, ...]]] = []
         for player_index, player in enumerate(self.state.players):
             survivors: List[Minion] = []
@@ -2560,6 +2763,12 @@ class Game:
                 return minion
         raise IllegalAction("minion entity not found")
 
+    def _find_location(self, player: int, entity_id: Optional[int]) -> Location:
+        for location in self.state.players[player].locations:
+            if location.entity_id == entity_id:
+                return location
+        raise IllegalAction("location entity not found")
+
     def _entity_id(self) -> int:
         value = self._next_entity_id
         self._next_entity_id += 1
@@ -2595,9 +2804,7 @@ class Game:
             "winner": self.state.winner,
             "terminal_reason": self.state.terminal_reason,
             "pending_discover_player": self.state.pending_discover_player,
-            "pending_discover_option_count": len(
-                self.state.pending_discover_options
-            ),
+            "pending_discover_option_count": len(self.state.pending_discover_options),
         }
 
     @staticmethod
@@ -2614,9 +2821,7 @@ class Game:
             "overloaded_mana": player.overloaded_mana,
             "corpses": player.corpses,
             "graveyard": list(player.graveyard),
-            "friendly_undead_died_since_last_turn": (
-                player.friendly_undead_died_since_last_turn
-            ),
+            "friendly_undead_died_since_last_turn": (player.friendly_undead_died_since_last_turn),
             "spells_played_this_turn": list(player.spells_played_this_turn),
             "spells_played_previous_turn": list(player.spells_played_previous_turn),
             "fatigue": player.fatigue,

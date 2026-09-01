@@ -25,6 +25,7 @@ class TargetMode(str, Enum):
     UNDAMAGED_MINION = "undamaged_minion"
     ENEMY_TAUNT_MINION = "enemy_taunt_minion"
     HIGH_ATTACK_MINION = "high_attack_minion"
+    ENEMY_LOCATION = "enemy_location"
 
 
 class ActionType(str, Enum):
@@ -34,6 +35,7 @@ class ActionType(str, Enum):
     HERO_ATTACK = "hero_attack"
     HERO_POWER = "hero_power"
     DISCOVER = "discover"
+    LOCATION = "location"
     END_TURN = "end_turn"
 
 
@@ -134,6 +136,12 @@ class CardDef:
     spell_damage: int = 0
     ignores_taunt_for_friendly_attacks: bool = False
     transforms_in_hand_to_last_spell: bool = False
+    pays_health_if_healed: bool = False
+    grants_hero_immunity: bool = False
+    choose_both_for_friendly: bool = False
+    is_outcast_card: bool = False
+    is_combo_card: bool = False
+    has_battlecry: bool = False
 
 
 @dataclass
@@ -145,6 +153,7 @@ class HandCard:
     cost_modifier: int = 0
     outside_starting_deck: bool = False
     origin_card_id: str = ""
+    special_tags: Tuple[str, ...] = ()
 
 
 @dataclass
@@ -232,6 +241,15 @@ class PlayerState:
     spells_played_previous_turn: List[str] = field(default_factory=list)
     end_turn_enemy_damage: int = 0
     healed_this_turn: bool = False
+    next_demon_discount: int = 0
+    next_demon_cost_zero_this_turn: bool = False
+    next_outcast_discount: int = 0
+    next_combo_discount_this_turn: int = 0
+    next_spell_discount_this_turn: int = 0
+    spell_tax_remaining_turns: int = 0
+    next_hero_power_cost_increase: int = 0
+    minion_types_played_this_turn: List[str] = field(default_factory=list)
+    minion_types_played_previous_turn: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -283,6 +301,11 @@ class GameState:
     pending_discover_attack_bonus: int = 0
     pending_discover_health_bonus: int = 0
     pending_discover_heal_by_cost: bool = False
+    pending_discover_cost_modifier: int = 0
+    pending_discover_summon: bool = False
+    pending_discover_freeze: bool = False
+    pending_discover_special_tags: Tuple[str, ...] = ()
+    pending_discover_queue: List[Tuple[str, ...]] = field(default_factory=list)
 
     @property
     def terminal(self) -> bool:
