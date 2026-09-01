@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from dataclasses import fields
+from typing import Dict, Iterable, Iterator, Tuple
 
 from ...cards import CARDS
-from ...model import CardDef
+from ...model import CardDef, Effect
 from .advanced_status_batch import CARDS as ADVANCED_STATUS_BATCH_CARDS
 from .aura_hand_random_batch import CARDS as AURA_HAND_RANDOM_BATCH_CARDS
 from .choose_one_batch import CARDS as CHOOSE_ONE_BATCH_CARDS
@@ -61,6 +62,46 @@ GENERATED_TOKEN_CARDS.update(EVENT_TRIGGER_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(SPECIAL_ACTION_BATCH_TOKEN_CARDS)
 
 
+def _iter_effects(value: object) -> Iterator[Effect]:
+    if isinstance(value, Effect):
+        yield value
+    elif isinstance(value, tuple):
+        for item in value:
+            yield from _iter_effects(item)
+
+
+def referenced_card_ids(card: CardDef) -> Tuple[str, ...]:
+    referenced = set()
+    for field in fields(CardDef):
+        for effect in _iter_effects(getattr(card, field.name)):
+            if effect.card_id:
+                referenced.add(effect.card_id)
+            referenced.update(effect.card_ids)
+    return tuple(sorted(referenced))
+
+
+def generated_dependencies(card_id: str) -> Dict[str, CardDef]:
+    try:
+        card = GENERATED_CARDS[card_id]
+    except KeyError as error:
+        raise ValueError("unknown generated card: {}".format(card_id)) from error
+    available = dict(CARDS)
+    available.update(GENERATED_TOKEN_CARDS)
+    dependencies: Dict[str, CardDef] = {}
+    for dependency_id in referenced_card_ids(card):
+        if dependency_id == card_id:
+            continue
+        try:
+            dependencies[dependency_id] = available[dependency_id]
+        except KeyError as error:
+            raise ValueError(
+                "generated card {} references undefined dependency {}".format(
+                    card_id, dependency_id
+                )
+            ) from error
+    return dependencies
+
+
 def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
     registry = dict(CARDS)
     registry.update(GENERATED_TOKEN_CARDS)
@@ -102,5 +143,7 @@ __all__ = [
     "SUMMON_BATCH_TOKEN_CARDS",
     "TRIBE_POISON_BATCH_CARDS",
     "WEAPON_BATCH_CARDS",
+    "generated_dependencies",
+    "referenced_card_ids",
     "runtime_registry",
 ]

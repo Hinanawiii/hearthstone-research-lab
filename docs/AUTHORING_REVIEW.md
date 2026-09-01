@@ -14,9 +14,11 @@ cardlab import-standard --db runs/authoring/review.db --build latest
 ```
 
 As of 2026-08-27, the import covers `CORE`, `EMERALD_DREAM`, `THE_LOST_CITY`, `TIME_TRAVEL`,
-`CATACLYSM`, and `ESCAPEFROM_VIOLET_HOLD`. The default database uses build `250339`: 1,166
-collectible cards are in the authoring queue, while 995 non-collectible tokens and dependencies are
-available in the source catalog without crowding the queue.
+`CATACLYSM`, and `ESCAPEFROM_VIOLET_HOLD`. The default database uses build `250339`. Only
+collectible cards in the current Standard scope enter the authoring queue. The source catalog also
+retains card definitions from historical constructed sets, including tokens whose IDs still belong
+to their parent card's original set and old collectible cards generated directly by an effect. These
+records are available for ID lookup without crowding the human queue.
 
 Imports are incremental. Unchanged cards keep their state; changed names, rules text, or structured
 card data preserve prior questions and answers but reopen review. Cards that leave Standard are
@@ -65,6 +67,12 @@ event.
 An external authoring agent may only claim cards with `ready_to_generate`. This repository currently
 provides the queue and enforceable gates, not an automatic authoring executor. The approval button
 adds a card to the generation queue; it does not invoke a model or write rules code.
+
+When implementing a parent card, the authoring agent must define every derivative card referenced by
+its effects. Before review material is generated, the runner checks that each derivative has both a
+runtime definition and a source-catalog record. A missing dependency stops generation. Simple fixed
+tokens are reviewed with their parent instead of receiving separate queue entries. Derivatives with
+dynamic choices, random pools, or special state require a separate experimental review.
 
 ## AI research candidates
 

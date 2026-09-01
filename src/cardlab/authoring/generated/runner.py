@@ -13,7 +13,12 @@ from ..review_format import (
     validate_review_document,
 )
 from ..store import ReviewStore
-from . import GENERATED_CARDS, runtime_registry
+from . import (
+    GENERATED_CARDS,
+    GENERATED_TOKEN_CARDS,
+    generated_dependencies,
+    runtime_registry,
+)
 from .advanced_status_batch import (
     AUTHORING_METADATA as ADVANCED_STATUS_BATCH_METADATA,
 )
@@ -320,6 +325,31 @@ def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
     if card["source_text"] != metadata["source_text_zh"]:
         raise ValueError("generated implementation source text is stale")
 
+    dependencies = []
+    for dependency_id, dependency in generated_dependencies(card_id).items():
+        try:
+            source_dependency = store.get_source_card(dependency_id)
+        except KeyError as error:
+            raise ValueError(
+                "generated dependency is missing from source catalog: {}".format(dependency_id)
+            ) from error
+        if (
+            dependency_id in GENERATED_TOKEN_CARDS
+            and source_dependency["name"] != dependency.name
+        ):
+            raise ValueError(
+                "generated dependency name differs from source catalog: {}".format(dependency_id)
+            )
+        dependencies.append(
+            {
+                "card_id": dependency_id,
+                "name_zh": source_dependency["name"],
+                "source_text_zh": source_dependency["source_text"],
+                "source_version": source_dependency["source_version"],
+                "definition": asdict(dependency),
+            }
+        )
+
     scenario = scenario_builder(runtime_registry([card_id]))
     document = {
         "schema_version": REVIEW_SCHEMA_VERSION,
@@ -334,6 +364,7 @@ def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
             "definition": asdict(definition),
             "generator": metadata["generated_by"],
             "card_module": CARD_MODULES[card_id],
+            "dependencies": dependencies,
         },
         "scenario": scenario,
     }

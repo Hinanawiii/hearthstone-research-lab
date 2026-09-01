@@ -279,6 +279,17 @@ def validate_review_document(document: Mapping[str, Any]) -> None:
         {"card_module", "generator", "definition"},
         "implementation",
     )
+    dependencies = _mapping(document["implementation"], "implementation").get(
+        "dependencies", []
+    )
+    if not isinstance(dependencies, list):
+        raise ValueError("implementation dependencies must be a list")
+    for dependency in dependencies:
+        _require_keys(
+            _mapping(dependency, "implementation dependency"),
+            {"card_id", "name_zh", "source_text_zh", "source_version", "definition"},
+            "implementation dependency",
+        )
     scenario = _mapping(document["scenario"], "scenario")
     _require_keys(
         scenario,
@@ -384,9 +395,20 @@ def render_review_document_zh(
         "卡面：{}".format(card["source_text_zh"]),
         "核验目的：{}".format(scenario["purpose_zh"]),
         "执行动作：{}".format(_mapping(scenario["action"], "action")["description_zh"]),
-        "",
-        "操作前",
     ]
+    dependencies = _mapping(document["implementation"], "implementation").get(
+        "dependencies", []
+    )
+    if dependencies:
+        lines.extend(["", "随母卡实现的衍生牌"])
+        for dependency in dependencies:
+            item = _mapping(dependency, "implementation dependency")
+            lines.append(
+                "- {}（{}）：{}".format(
+                    item["name_zh"], item["card_id"], item["source_text_zh"] or "无卡面文字"
+                )
+            )
+    lines.extend(["", "操作前"])
     lines.extend(_render_state(_mapping(scenario["before"], "before"), names))
     lines.extend(["", "操作后"])
     lines.extend(_render_state(_mapping(scenario["after"], "after"), names))

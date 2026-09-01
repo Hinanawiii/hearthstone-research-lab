@@ -461,19 +461,27 @@ class ReviewStore:
             merged = dict(item)
             merged["source_version"] = source_version
             merged["source_kind"] = "hearthstone-standard"
-            prepared.append((self._normalize_card_record(merged), bool(item.get("collectible"))))
+            record = self._normalize_card_record(merged)
+            record["collectible"] = bool(item.get("collectible"))
+            prepared.append(
+                (
+                    record,
+                    bool(item.get("queue_card", item.get("collectible"))),
+                )
+            )
 
         timestamp = _now()
         stats = {
             "catalog_total": len(prepared),
-            "collectible_total": sum(collectible for _, collectible in prepared),
+            "collectible_total": sum(queue_card for _, queue_card in prepared),
+            "dependency_total": sum(not queue_card for _, queue_card in prepared),
             "queue_created": 0,
             "queue_updated": 0,
             "queue_unchanged": 0,
             "queue_reopened": 0,
             "queue_out_of_scope": 0,
         }
-        current_ids = {str(record["card_id"]) for record, collectible in prepared if collectible}
+        current_ids = {str(record["card_id"]) for record, queue_card in prepared if queue_card}
         with self._connection() as connection:
             previous_ids = {
                 str(row["card_id"])
@@ -490,7 +498,7 @@ class ReviewStore:
             )
             connection.execute("UPDATE source_cards SET in_scope = 0")
 
-            for record, collectible in prepared:
+            for record, queue_card in prepared:
                 self._write_card_name(
                     connection,
                     str(record["card_id"]),
@@ -523,7 +531,7 @@ class ReviewStore:
                         record["card_id"],
                         record["name"],
                         record["source_text"],
-                        int(collectible),
+                        int(record["collectible"]),
                         record["card_set"],
                         record["card_class"],
                         record["card_type"],
@@ -533,7 +541,7 @@ class ReviewStore:
                         timestamp,
                     ),
                 )
-                if not collectible:
+                if not queue_card:
                     continue
                 outcome, reopened = self._write_card(connection, record, timestamp)
                 stats["queue_{}".format(outcome)] += 1

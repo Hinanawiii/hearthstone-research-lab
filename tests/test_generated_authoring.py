@@ -3,7 +3,12 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
-from cardlab.authoring.generated import GENERATED_CARDS, runtime_registry
+from cardlab.authoring.generated import (
+    GENERATED_CARDS,
+    GENERATED_TOKEN_CARDS,
+    generated_dependencies,
+    runtime_registry,
+)
 from cardlab.authoring.generated.rlk_709 import (
     AUTHORING_METADATA,
     SCENARIO_CARD_NAMES_ZH,
@@ -88,6 +93,77 @@ class GeneratedAuthoringTests(unittest.TestCase):
         from cardlab.cards import DECK_CARD_IDS
 
         self.assertTrue(generated_ids.isdisjoint(DECK_CARD_IDS))
+
+    def test_every_generated_dependency_has_a_runtime_definition(self) -> None:
+        dependency_ids = set()
+        for card_id in GENERATED_CARDS:
+            dependency_ids.update(generated_dependencies(card_id))
+
+        self.assertTrue(dependency_ids)
+        self.assertTrue(set(GENERATED_TOKEN_CARDS) <= dependency_ids)
+        self.assertEqual(generated_dependencies("CORE_BAR_878")["BAR_878t"].name, "战地医师")
+
+    def test_parent_review_embeds_the_imported_derivative(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ReviewStore(Path(directory) / "review.db")
+            store.import_standard_catalog(
+                [
+                    {
+                        "card_id": "CORE_BAR_878",
+                        "name": "战地医师老兵",
+                        "source_text": "在你施放一个神圣法术后，召唤一个2/2并具有吸血的医师。",
+                        "collectible": True,
+                    },
+                    {
+                        "card_id": "BAR_878t",
+                        "name": "战地医师",
+                        "source_text": "吸血",
+                        "collectible": False,
+                    },
+                ],
+                source_version="250339",
+                format_revision="test",
+            )
+            store.set_interview_complete("CORE_BAR_878", True)
+            store.approve_generation("CORE_BAR_878", "human-reviewer")
+
+            artifact = build_review_artifact(store, "CORE_BAR_878")
+            dependencies = artifact["implementation"]["dependencies"]
+
+            self.assertEqual(len(dependencies), 1)
+            self.assertEqual(dependencies[0]["card_id"], "BAR_878t")
+            self.assertEqual(dependencies[0]["name_zh"], "战地医师")
+            self.assertIn("战地医师（BAR_878t）", render_review_document_zh(artifact))
+
+    def test_reused_legacy_card_uses_the_source_catalog_chinese_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ReviewStore(Path(directory) / "review.db")
+            store.import_standard_catalog(
+                [
+                    {
+                        "card_id": "CORE_EX1_559",
+                        "name": "大法师安东尼达斯",
+                        "source_text": "每当你施放一个法术，将一张“火球术”法术牌置入你的手牌。",
+                        "collectible": True,
+                        "queue_card": True,
+                    },
+                    {
+                        "card_id": "CS2_029",
+                        "name": "火球术",
+                        "source_text": "造成6点伤害。",
+                        "collectible": True,
+                        "queue_card": False,
+                    },
+                ],
+                source_version="250339",
+                format_revision="test",
+            )
+            store.set_interview_complete("CORE_EX1_559", True)
+            store.approve_generation("CORE_EX1_559", "human-reviewer")
+
+            artifact = build_review_artifact(store, "CORE_EX1_559")
+
+            self.assertEqual(artifact["implementation"]["dependencies"][0]["name_zh"], "火球术")
 
     def test_staging_requires_approval_and_stops_at_human_review(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

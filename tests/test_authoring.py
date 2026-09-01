@@ -352,6 +352,7 @@ class AuthoringReviewTests(unittest.TestCase):
 
         self.assertEqual(report["catalog_total"], 2)
         self.assertEqual(report["collectible_total"], 1)
+        self.assertEqual(report["dependency_total"], 1)
         queued = {card["card_id"] for card in self.store.list_cards()}
         self.assertIn("JAIL_205", queued)
         self.assertNotIn("CAP_805t", queued)

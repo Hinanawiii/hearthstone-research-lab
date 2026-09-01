@@ -27,6 +27,13 @@ STANDARD_SET_NAMES_ZH = {
     "CATACLYSM": "大灾变",
     "ESCAPEFROM_VIOLET_HOLD": "逃离紫罗兰监狱",
 }
+DEPENDENCY_CARD_TYPES = frozenset(
+    {"MINION", "SPELL", "WEAPON", "LOCATION", "HERO", "HERO_POWER"}
+)
+CONSTRUCTED_ROOT_CARD_TYPES = frozenset({"MINION", "SPELL", "WEAPON", "LOCATION"})
+LEGACY_CONSTRUCTED_SET_IDS = frozenset(
+    {"BASIC", "EXPERT1", "VANILLA", "LEGACY", "CORE_HIDDEN"}
+)
 SCOPE_SOURCES = (
     "https://hearthstone.blizzard.com/en-us/expansions-adventures",
     "https://hearthstone.blizzard.com/en-us/news/24267727",
@@ -107,11 +114,26 @@ def build_standard_catalog(
     zh_source_url: str,
     en_source_url: str,
 ) -> StandardCatalog:
-    selected = [card for card in zh_cards if card.get("set") in STANDARD_SET_IDS]
-    present_sets = {str(card.get("set")) for card in selected}
+    standard_cards = [card for card in zh_cards if card.get("set") in STANDARD_SET_IDS]
+    present_sets = {str(card.get("set")) for card in standard_cards}
     missing_sets = set(STANDARD_SET_IDS) - present_sets
     if missing_sets:
         raise ValueError("standard source is missing sets: {}".format(sorted(missing_sets)))
+    constructed_sets = {
+        str(card.get("set"))
+        for card in zh_cards
+        if card.get("collectible") and card.get("type") in CONSTRUCTED_ROOT_CARD_TYPES
+    }
+    constructed_sets.update(LEGACY_CONSTRUCTED_SET_IDS)
+    selected = [
+        card
+        for card in zh_cards
+        if card.get("set") in STANDARD_SET_IDS
+        or (
+            card.get("type") in DEPENDENCY_CARD_TYPES
+            and card.get("set") in constructed_sets
+        )
+    ]
     english = {str(card.get("id")): card for card in en_cards}
     records: List[Dict[str, Any]] = []
     for card in selected:
@@ -126,7 +148,9 @@ def build_standard_catalog(
             {
                 "name_en": str(en_card.get("name", "")),
                 "text_en": plain_card_text(en_card.get("text", "")),
-                "set_name_zh": STANDARD_SET_NAMES_ZH[str(card["set"])],
+                "set_name_zh": STANDARD_SET_NAMES_ZH.get(
+                    str(card["set"]), str(card["set"])
+                ),
                 "format_revision": FORMAT_REVISION,
                 "scope_sources": list(SCOPE_SOURCES),
                 "zh_source_url": zh_source_url,
@@ -139,6 +163,9 @@ def build_standard_catalog(
                 "name": str(card["name"]),
                 "source_text": plain_card_text(card.get("text", "")),
                 "collectible": bool(card.get("collectible")),
+                "queue_card": bool(
+                    card.get("collectible") and card.get("set") in STANDARD_SET_IDS
+                ),
                 "card_set": str(card["set"]),
                 "card_class": card_class,
                 "card_type": str(card.get("type", "UNKNOWN")),
