@@ -320,9 +320,33 @@ class Game:
         if action.choice < 0 or action.choice >= len(options):
             raise IllegalAction("discover choice is out of range")
         chosen_card_id = options[action.choice]
+        from_deck = self.state.pending_discover_from_deck
+        attack_bonus = self.state.pending_discover_attack_bonus
+        health_bonus = self.state.pending_discover_health_bonus
+        heal_by_cost = self.state.pending_discover_heal_by_cost
         self.state.pending_discover_player = None
         self.state.pending_discover_options = ()
-        self._add_to_hand(actor, chosen_card_id)
+        self.state.pending_discover_from_deck = False
+        self.state.pending_discover_attack_bonus = 0
+        self.state.pending_discover_health_bonus = 0
+        self.state.pending_discover_heal_by_cost = False
+        player = self.state.players[actor]
+        if from_deck and chosen_card_id in player.deck:
+            player.deck.remove(chosen_card_id)
+        if len(player.hand) < 10:
+            player.hand.append(
+                HandCard(
+                    self._entity_id(),
+                    chosen_card_id,
+                    attack_bonus=attack_bonus,
+                    health_bonus=health_bonus,
+                )
+            )
+        if heal_by_cost:
+            player.hero_health = min(
+                30,
+                player.hero_health + self.cards[chosen_card_id].cost,
+            )
 
     def _resolve_effects(
         self,
@@ -553,13 +577,52 @@ class Game:
                     and effect.race in card.races
                 ]
                 if race_candidates:
-                    self._add_to_hand(actor, self.rng.choice(race_candidates))
+                    for _ in range(max(1, effect.amount)):
+                        self._add_to_hand(actor, self.rng.choice(race_candidates))
+            elif effect.kind == "add_random_from_pool":
+                pool_card_ids = [
+                    card_id for card_id in effect.card_ids if card_id in self.cards
+                ]
+                if pool_card_ids:
+                    for _ in range(max(1, effect.amount)):
+                        self._add_to_hand(actor, self.rng.choice(pool_card_ids))
             elif effect.kind == "shuffle_into_deck":
                 player = self.state.players[actor]
                 player.deck.extend(effect.card_id for _ in range(effect.amount))
                 self.rng.shuffle(player.deck)
             elif effect.kind == "discover_from_pool":
                 self._start_discover(actor, effect.card_ids)
+            elif effect.kind == "discover_from_deck":
+                self._start_discover(
+                    actor,
+                    tuple(self.state.players[actor].deck),
+                    from_deck=True,
+                )
+            elif effect.kind == "discover_from_pool_if_hand_race":
+                if any(
+                    hand_card.card_id in self.cards
+                    and effect.race in self.cards[hand_card.card_id].races
+                    for hand_card in self.state.players[actor].hand
+                ):
+                    self._start_discover(actor, effect.card_ids)
+            elif effect.kind == "discover_from_pool_if_other_friendly_race":
+                played_entity_id = played_minion.entity_id if played_minion else None
+                if any(
+                    minion.entity_id != played_entity_id
+                    and effect.race in minion.races
+                    and minion.health > 0
+                    for minion in self.state.players[actor].board
+                ):
+                    self._start_discover(actor, effect.card_ids)
+            elif effect.kind == "discover_from_pool_heal_by_cost":
+                self._start_discover(actor, effect.card_ids, heal_by_cost=True)
+            elif effect.kind == "discover_from_pool_buff":
+                self._start_discover(
+                    actor,
+                    effect.card_ids,
+                    attack_bonus=effect.attack,
+                    health_bonus=effect.health,
+                )
             elif effect.kind == "discover_from_pool_if_selected_dead":
                 if selected is None or selected.kind != "minion":
                     raise RuntimeError("conditional discover requires a minion target")
@@ -1880,7 +1943,16 @@ class Game:
     def _gain_corpses(self, actor: int, amount: int) -> None:
         self.state.players[actor].corpses += amount * self._corpse_gain_multiplier(actor)
 
-    def _start_discover(self, actor: int, candidate_ids: Tuple[str, ...]) -> None:
+    def _start_discover(
+        self,
+        actor: int,
+        candidate_ids: Tuple[str, ...],
+        *,
+        from_deck: bool = False,
+        attack_bonus: int = 0,
+        health_bonus: int = 0,
+        heal_by_cost: bool = False,
+    ) -> None:
         if self.state.pending_discover_player is not None:
             raise RuntimeError("nested discover choices are not supported")
         candidates = list(dict.fromkeys(card_id for card_id in candidate_ids if card_id in self.cards))
@@ -1891,6 +1963,10 @@ class Game:
         self.state.pending_discover_options = tuple(
             self.rng.sample(candidates, option_count)
         )
+        self.state.pending_discover_from_deck = from_deck
+        self.state.pending_discover_attack_bonus = attack_bonus
+        self.state.pending_discover_health_bonus = health_bonus
+        self.state.pending_discover_heal_by_cost = heal_by_cost
 
     def _summon_random_collectible_minion(
         self, actor: int, cost: int

@@ -114,6 +114,15 @@ from .deathrattle_batch import (
 from .deathrattle_batch import (
     build_review_scenario as build_deathrattle_batch_scenario,
 )
+from .discovery_generation_batch import (
+    AUTHORING_METADATA as DISCOVERY_GENERATION_BATCH_METADATA,
+)
+from .discovery_generation_batch import (
+    SCENARIO_CARD_NAMES_ZH as DISCOVERY_GENERATION_BATCH_CARD_NAMES,
+)
+from .discovery_generation_batch import (
+    build_review_scenario as build_discovery_generation_batch_scenario,
+)
 from .dynamic_zone_batch import AUTHORING_METADATA as DYNAMIC_ZONE_BATCH_METADATA
 from .dynamic_zone_batch import (
     SCENARIO_CARD_NAMES_ZH as DYNAMIC_ZONE_BATCH_CARD_NAMES,
@@ -304,6 +313,18 @@ for deathrattle_card_id, deathrattle_metadata in DEATHRATTLE_BATCH_METADATA.item
         build_deathrattle_batch_scenario, deathrattle_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[deathrattle_card_id] = DEATHRATTLE_BATCH_CARD_NAMES
+
+for discovery_card_id, discovery_metadata in DISCOVERY_GENERATION_BATCH_METADATA.items():
+    CARD_MODULES[discovery_card_id] = (
+        "src/cardlab/authoring/generated/discovery_generation_batch.py"
+    )
+    CARD_METADATA[discovery_card_id] = discovery_metadata
+    SCENARIO_BUILDERS[discovery_card_id] = partial(
+        build_discovery_generation_batch_scenario, discovery_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[discovery_card_id] = (
+        DISCOVERY_GENERATION_BATCH_CARD_NAMES
+    )
 
 for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.items():
     CARD_MODULES[composite_card_id] = "src/cardlab/authoring/generated/composite_spell_batch.py"

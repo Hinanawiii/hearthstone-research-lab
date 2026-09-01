@@ -262,6 +262,10 @@ class GameState:
     terminal_reason: Optional[str] = None
     pending_discover_player: Optional[int] = None
     pending_discover_options: Tuple[str, ...] = ()
+    pending_discover_from_deck: bool = False
+    pending_discover_attack_bonus: int = 0
+    pending_discover_health_bonus: int = 0
+    pending_discover_heal_by_cost: bool = False
 
     @property
     def terminal(self) -> bool:
