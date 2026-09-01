@@ -22,7 +22,15 @@ def _pool() -> List[CardDef]:
         ),
         CardDef("CS1_042", "Goldshire Footman", CardType.MINION, 1, 1, 2, taunt=True),
         CardDef("CS2_172", "Bloodfen Raptor", CardType.MINION, 2, 3, 2),
-        CardDef("CS2_120", "River Crocolisk", CardType.MINION, 2, 2, 3),
+        CardDef(
+            "CS2_120",
+            "River Crocolisk",
+            CardType.MINION,
+            2,
+            2,
+            3,
+            races=("BEAST",),
+        ),
         CardDef(
             "EX1_015",
             "Novice Engineer",
@@ -86,4 +94,3 @@ DECK_CARD_IDS = tuple(card.card_id for card in CARDS.values() if card.collectibl
 def default_deck() -> List[str]:
     """Return the symmetric 30-card reference deck (two copies per collectible card)."""
     return [card_id for card_id in DECK_CARD_IDS for _ in range(2)]
-

@@ -134,6 +134,13 @@ from .keyword_batch import (
 from .keyword_batch import (
     build_review_scenario as build_keyword_batch_scenario,
 )
+from .random_summon_batch import AUTHORING_METADATA as RANDOM_SUMMON_BATCH_METADATA
+from .random_summon_batch import (
+    SCENARIO_CARD_NAMES_ZH as RANDOM_SUMMON_BATCH_CARD_NAMES,
+)
+from .random_summon_batch import (
+    build_review_scenario as build_random_summon_batch_scenario,
+)
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
 from .special_action_batch import AUTHORING_METADATA as SPECIAL_ACTION_BATCH_METADATA
 from .special_action_batch import (
@@ -315,6 +322,16 @@ for corpse_card_id, corpse_metadata in CORPSE_BATCH_METADATA.items():
     CARD_METADATA[corpse_card_id] = corpse_metadata
     SCENARIO_BUILDERS[corpse_card_id] = partial(build_corpse_batch_scenario, corpse_card_id)
     SCENARIO_CARD_NAME_CATALOGS[corpse_card_id] = CORPSE_BATCH_CARD_NAMES
+
+for random_summon_card_id, random_summon_metadata in RANDOM_SUMMON_BATCH_METADATA.items():
+    CARD_MODULES[random_summon_card_id] = (
+        "src/cardlab/authoring/generated/random_summon_batch.py"
+    )
+    CARD_METADATA[random_summon_card_id] = random_summon_metadata
+    SCENARIO_BUILDERS[random_summon_card_id] = partial(
+        build_random_summon_batch_scenario, random_summon_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[random_summon_card_id] = RANDOM_SUMMON_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

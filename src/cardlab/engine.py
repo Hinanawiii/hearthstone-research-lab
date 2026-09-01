@@ -390,6 +390,47 @@ class Game:
                     if summoned is None:
                         break
                     summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "summon_random":
+                summon_candidates = [
+                    card_id
+                    for card_id in effect.card_ids
+                    if card_id in self.cards
+                    and self.cards[card_id].card_type == CardType.MINION
+                ]
+                if summon_candidates:
+                    summoned = self._summon(actor, self.rng.choice(summon_candidates))
+                    if summoned is not None:
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
+            elif effect.kind == "summon_random_hand_cost":
+                cost = len(self.state.players[actor].hand)
+                summoned = self._summon_random_collectible_minion(actor, cost)
+                if summoned is not None:
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "summon_random_cost_spend_corpses":
+                player = self.state.players[actor]
+                spent = min(effect.amount, player.corpses)
+                player.corpses -= spent
+                summoned = self._summon_random_collectible_minion(actor, spent)
+                if summoned is not None:
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "summon_random_deck_minion_cost_at_most":
+                player = self.state.players[actor]
+                deck_candidates = [
+                    index
+                    for index, card_id in enumerate(player.deck)
+                    if card_id in self.cards
+                    and self.cards[card_id].card_type == CardType.MINION
+                    and self.cards[card_id].cost <= effect.amount
+                ]
+                if deck_candidates and len(player.board) < 7:
+                    card_id = player.deck.pop(self.rng.choice(deck_candidates))
+                    summoned = self._summon(actor, card_id)
+                    if summoned is not None:
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
             elif effect.kind == "grant_keyword_summoned":
                 for target in summoned_entities:
                     if any(
@@ -399,6 +440,16 @@ class Game:
                         self._grant_minion_keyword(target, effect.keyword)
             elif effect.kind == "gain_corpses":
                 self.state.players[actor].corpses += effect.amount
+            elif effect.kind == "add_random_race_to_hand":
+                race_candidates = [
+                    card.card_id
+                    for card in self.cards.values()
+                    if card.collectible
+                    and card.card_type == CardType.MINION
+                    and effect.race in card.races
+                ]
+                if race_candidates:
+                    self._add_to_hand(actor, self.rng.choice(race_candidates))
             elif effect.kind == "summon_up_to_corpses":
                 player = self.state.players[actor]
                 summon_count = min(effect.amount, player.corpses)
@@ -1486,6 +1537,20 @@ class Game:
             played_races=card.races,
         )
         return minion
+
+    def _summon_random_collectible_minion(
+        self, actor: int, cost: int
+    ) -> Optional[Minion]:
+        candidates = [
+            card.card_id
+            for card in self.cards.values()
+            if card.collectible
+            and card.card_type == CardType.MINION
+            and card.cost == cost
+        ]
+        if not candidates:
+            return None
+        return self._summon(actor, self.rng.choice(candidates))
 
     def _freeze(self, target: Optional[TargetRef]) -> None:
         if target is None:
