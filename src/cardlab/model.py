@@ -106,6 +106,8 @@ class CardDef:
     outcast_effects: Tuple[Effect, ...] = ()
     outcast_cost: int = -1
     combo_effects: Tuple[Effect, ...] = ()
+    choose_one_effects: Tuple[Tuple[Effect, ...], ...] = ()
+    choose_one_target_modes: Tuple[TargetMode, ...] = ()
 
 
 @dataclass
@@ -204,6 +206,7 @@ class Action:
     action_type: ActionType
     source_id: Optional[int] = None
     target: Optional[TargetRef] = None
+    choice: Optional[int] = None
 
     @classmethod
     def end_turn(cls) -> "Action":
@@ -215,6 +218,7 @@ class Action:
             "source_id": self.source_id,
         }
         data["target"] = asdict(self.target) if self.target else None
+        data["choice"] = self.choice
         return data
 
 

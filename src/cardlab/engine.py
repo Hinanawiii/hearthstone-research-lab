@@ -90,19 +90,47 @@ class Game:
             if self._effective_card_cost(actor, hand_card, card) <= (own.mana + own.temporary_mana):
                 if not card.requires_weapon or own.weapon is not None:
                     if card.card_type != CardType.MINION or len(own.board) < 7:
-                        target_mode = self._effective_target_mode(actor, card)
-                        targets = self._valid_targets(
-                            actor,
-                            target_mode,
-                            exclude_elusive=card.card_type == CardType.SPELL,
-                            exclude_enemy_stealth=True,
-                        )
-                        for target in targets:
-                            actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
-                        if target_mode == TargetMode.NONE or (
-                            card.target_optional_if_unavailable and not targets
-                        ):
-                            actions.append(Action(ActionType.PLAY, hand_card.entity_id))
+                        if card.choose_one_effects:
+                            if len(card.choose_one_effects) != len(card.choose_one_target_modes):
+                                raise RuntimeError("choose-one effects and target modes differ")
+                            for choice, target_mode in enumerate(card.choose_one_target_modes):
+                                targets = self._valid_targets(
+                                    actor,
+                                    target_mode,
+                                    exclude_elusive=card.card_type == CardType.SPELL,
+                                    exclude_enemy_stealth=True,
+                                )
+                                actions.extend(
+                                    Action(
+                                        ActionType.PLAY,
+                                        hand_card.entity_id,
+                                        target,
+                                        choice,
+                                    )
+                                    for target in targets
+                                )
+                                if target_mode == TargetMode.NONE:
+                                    actions.append(
+                                        Action(
+                                            ActionType.PLAY,
+                                            hand_card.entity_id,
+                                            choice=choice,
+                                        )
+                                    )
+                        else:
+                            target_mode = self._effective_target_mode(actor, card)
+                            targets = self._valid_targets(
+                                actor,
+                                target_mode,
+                                exclude_elusive=card.card_type == CardType.SPELL,
+                                exclude_enemy_stealth=True,
+                            )
+                            for target in targets:
+                                actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
+                            if target_mode == TargetMode.NONE or (
+                                card.target_optional_if_unavailable and not targets
+                            ):
+                                actions.append(Action(ActionType.PLAY, hand_card.entity_id))
             if card.tradeable and own.deck and own.mana + own.temporary_mana >= 1:
                 actions.append(Action(ActionType.TRADE, hand_card.entity_id))
 
@@ -220,6 +248,15 @@ class Game:
             self._refresh_dynamic_attack_bonuses()
         player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target, played_minion)
+        if card.choose_one_effects:
+            if action.choice is None:
+                raise IllegalAction("choose-one card requires a choice")
+            self._resolve_effect_sequence(
+                actor,
+                card.choose_one_effects[action.choice],
+                action.target,
+                played_minion,
+            )
         if was_outcast and card.outcast_effects:
             self._resolve_effect_sequence(actor, card.outcast_effects, action.target, played_minion)
         if combo_active and card.combo_effects:
