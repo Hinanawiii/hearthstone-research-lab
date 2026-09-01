@@ -32,6 +32,13 @@ from .composite_spell_batch import (
 from .composite_spell_batch import (
     build_review_scenario as build_composite_spell_batch_scenario,
 )
+from .conditional_state_batch import AUTHORING_METADATA as CONDITIONAL_STATE_BATCH_METADATA
+from .conditional_state_batch import (
+    SCENARIO_CARD_NAMES_ZH as CONDITIONAL_STATE_BATCH_CARD_NAMES,
+)
+from .conditional_state_batch import (
+    build_review_scenario as build_conditional_state_batch_scenario,
+)
 from .conditional_weapon_batch import (
     AUTHORING_METADATA as CONDITIONAL_WEAPON_BATCH_METADATA,
 )
@@ -210,6 +217,19 @@ for (
         build_conditional_weapon_batch_scenario, conditional_weapon_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[conditional_weapon_card_id] = CONDITIONAL_WEAPON_BATCH_CARD_NAMES
+
+for (
+    conditional_state_card_id,
+    conditional_state_metadata,
+) in CONDITIONAL_STATE_BATCH_METADATA.items():
+    CARD_MODULES[conditional_state_card_id] = (
+        "src/cardlab/authoring/generated/conditional_state_batch.py"
+    )
+    CARD_METADATA[conditional_state_card_id] = conditional_state_metadata
+    SCENARIO_BUILDERS[conditional_state_card_id] = partial(
+        build_conditional_state_batch_scenario, conditional_state_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[conditional_state_card_id] = CONDITIONAL_STATE_BATCH_CARD_NAMES
 
 for summon_card_id, summon_metadata in SUMMON_BATCH_METADATA.items():
     CARD_MODULES[summon_card_id] = "src/cardlab/authoring/generated/summon_batch.py"

@@ -21,6 +21,7 @@ class TargetMode(str, Enum):
     FRIENDLY_CHARACTER = "friendly_character"
     FRIENDLY_UNDEAD = "friendly_undead"
     DAMAGED_ENEMY_MINION = "damaged_enemy_minion"
+    UNDAMAGED_MINION = "undamaged_minion"
 
 
 class ActionType(str, Enum):
@@ -63,10 +64,12 @@ class CardDef:
     on_owner_hero_power_effects: Tuple[Effect, ...] = ()
     on_owner_hero_attack_effects: Tuple[Effect, ...] = ()
     on_owner_turn_end_effects: Tuple[Effect, ...] = ()
+    on_owner_turn_start_effects: Tuple[Effect, ...] = ()
     on_each_turn_start_effects: Tuple[Effect, ...] = ()
     on_owner_draw_effects: Tuple[Effect, ...] = ()
     on_friendly_play_effects: Tuple[Effect, ...] = ()
     on_friendly_play_race: str = ""
+    on_owner_spell_cast_school: str = ""
     on_friendly_summon_effects: Tuple[Effect, ...] = ()
     on_friendly_summon_race: str = ""
     on_any_minion_damaged_effects: Tuple[Effect, ...] = ()
@@ -86,6 +89,11 @@ class CardDef:
     target_optional_if_unavailable: bool = False
     overload: int = 0
     spell_school: str = ""
+    damaged_attack_bonus: int = 0
+    opponent_turn_attack_bonus: int = 0
+    weapon_attack_bonus: int = 0
+    charge_if_weapon: bool = False
+    freezes_damaged_characters: bool = False
 
 
 @dataclass
@@ -116,6 +124,9 @@ class Minion:
     frozen: bool = False
     temporary_attack: int = 0
     temporary_attack_expires_turn: Optional[int] = None
+    active_damaged_attack_bonus: int = 0
+    active_opponent_turn_attack_bonus: int = 0
+    active_weapon_attack_bonus: int = 0
 
     def can_attack_ignoring_freeze(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush
@@ -139,6 +150,7 @@ class PlayerState:
     hero_health: int = 30
     hero_armor: int = 0
     hero_attack: int = 0
+    hero_temporary_attack: int = 0
     hero_attacks_this_turn: int = 0
     hero_frozen: bool = False
     max_mana: int = 0
