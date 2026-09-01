@@ -87,25 +87,24 @@ class Game:
 
         for hand_card in own.hand:
             card = self.cards[hand_card.card_id]
-            if card.cost > own.mana + own.temporary_mana:
-                continue
-            if card.requires_weapon and own.weapon is None:
-                continue
-            if card.card_type == CardType.MINION and len(own.board) >= 7:
-                continue
-            target_mode = self._effective_target_mode(actor, card)
-            targets = self._valid_targets(
-                actor,
-                target_mode,
-                exclude_elusive=card.card_type == CardType.SPELL,
-                exclude_enemy_stealth=True,
-            )
-            for target in targets:
-                actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
-            if target_mode == TargetMode.NONE or (
-                card.target_optional_if_unavailable and not targets
-            ):
-                actions.append(Action(ActionType.PLAY, hand_card.entity_id))
+            if self._effective_card_cost(actor, hand_card, card) <= (own.mana + own.temporary_mana):
+                if not card.requires_weapon or own.weapon is not None:
+                    if card.card_type != CardType.MINION or len(own.board) < 7:
+                        target_mode = self._effective_target_mode(actor, card)
+                        targets = self._valid_targets(
+                            actor,
+                            target_mode,
+                            exclude_elusive=card.card_type == CardType.SPELL,
+                            exclude_enemy_stealth=True,
+                        )
+                        for target in targets:
+                            actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
+                        if target_mode == TargetMode.NONE or (
+                            card.target_optional_if_unavailable and not targets
+                        ):
+                            actions.append(Action(ActionType.PLAY, hand_card.entity_id))
+            if card.tradeable and own.deck and own.mana + own.temporary_mana >= 1:
+                actions.append(Action(ActionType.TRADE, hand_card.entity_id))
 
         attack_targets = self._attack_targets(actor)
         for minion in own.board:
@@ -149,6 +148,8 @@ class Game:
             self._end_turn()
         elif action.action_type == ActionType.PLAY:
             self._play_card(actor, action)
+        elif action.action_type == ActionType.TRADE:
+            self._trade_card(actor, action)
         elif action.action_type == ActionType.ATTACK:
             self._attack(actor, action)
         elif action.action_type == ActionType.HERO_ATTACK:
@@ -178,7 +179,9 @@ class Game:
         player = self.state.players[actor]
         hand_card = self._find_hand_card(actor, action.source_id)
         card = self.cards[hand_card.card_id]
-        self._spend_mana(player, card.cost)
+        was_outcast = self._is_outcast(player, hand_card)
+        combo_active = player.cards_played_this_turn > 0
+        self._spend_mana(player, self._effective_card_cost(actor, hand_card, card))
         player.hand.remove(hand_card)
         played_minion: Optional[TargetRef] = None
         if card.card_type == CardType.MINION:
@@ -217,6 +220,11 @@ class Game:
             self._refresh_dynamic_attack_bonuses()
         player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target, played_minion)
+        if was_outcast and card.outcast_effects:
+            self._resolve_effect_sequence(actor, card.outcast_effects, action.target, played_minion)
+        if combo_active and card.combo_effects:
+            self._resolve_effect_sequence(actor, card.combo_effects, action.target, played_minion)
+        player.cards_played_this_turn += 1
         self._cleanup_deaths()
         if card.card_type == CardType.SPELL:
             self._resolve_board_triggers(
@@ -238,6 +246,19 @@ class Game:
                 played_races=card.races,
             )
         self._cleanup_deaths()
+        self._check_terminal()
+
+    def _trade_card(self, actor: int, action: Action) -> None:
+        player = self.state.players[actor]
+        hand_card = self._find_hand_card(actor, action.source_id)
+        card = self.cards[hand_card.card_id]
+        if not card.tradeable or not player.deck:
+            raise IllegalAction("card cannot be traded")
+        self._spend_mana(player, 1)
+        player.hand.remove(hand_card)
+        self._draw(actor)
+        insertion_index = self.rng.randrange(len(player.deck) + 1)
+        player.deck.insert(insertion_index, hand_card.card_id)
         self._check_terminal()
 
     def _resolve_effects(
@@ -392,6 +413,8 @@ class Game:
                     self._add_to_hand(actor, self.rng.choice(enemy_deck))
             elif effect.kind == "equip_weapon":
                 self._equip_weapon(actor, effect.card_id)
+            elif effect.kind == "destroy_enemy_weapon":
+                self._destroy_weapon(1 - actor)
             elif effect.kind == "temporary_mana":
                 player = self.state.players[actor]
                 room = max(0, 10 - player.mana - player.temporary_mana)
@@ -856,6 +879,7 @@ class Game:
         player.temporary_mana = 0
         player.hero_power_used = False
         player.hero_attacks_this_turn = 0
+        player.cards_played_this_turn = 0
         for minion in player.board:
             minion.attacks_this_turn = 0
         self._refresh_dynamic_attack_bonuses()
@@ -923,6 +947,19 @@ class Game:
         player.temporary_mana -= temporary
         player.mana -= amount - temporary
 
+    @staticmethod
+    def _is_outcast(player: PlayerState, hand_card: HandCard) -> bool:
+        return bool(player.hand) and (
+            player.hand[0].entity_id == hand_card.entity_id
+            or player.hand[-1].entity_id == hand_card.entity_id
+        )
+
+    def _effective_card_cost(self, actor: int, hand_card: HandCard, card: CardDef) -> int:
+        cost = card.cost + hand_card.cost_modifier
+        if card.outcast_cost >= 0 and self._is_outcast(self.state.players[actor], hand_card):
+            cost = card.outcast_cost
+        return max(0, cost)
+
     def _valid_targets(
         self,
         actor: int,
@@ -959,6 +996,26 @@ class Game:
                 if minion.health > 0
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
+            ]
+        if mode == TargetMode.ENEMY_TAUNT_MINION:
+            enemy = 1 - actor
+            return [
+                TargetRef.minion(enemy, minion.entity_id)
+                for minion in self.state.players[enemy].board
+                if minion.health > 0
+                and minion.taunt
+                and (not exclude_elusive or not minion.elusive)
+                and (not exclude_enemy_stealth or not minion.stealth)
+            ]
+        if mode == TargetMode.HIGH_ATTACK_MINION:
+            return [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0
+                and minion.attack >= 7
+                and (not exclude_elusive or not minion.elusive)
+                and (not exclude_enemy_stealth or player_index == actor or not minion.stealth)
             ]
         if mode == TargetMode.DAMAGED_ENEMY_MINION:
             enemy = 1 - actor
@@ -1012,6 +1069,10 @@ class Game:
             return card.target_mode
         if card.target_condition == "weapon_equipped":
             if self.state.players[actor].weapon is None:
+                return TargetMode.NONE
+            return card.target_mode
+        if card.target_condition == "combo_active":
+            if self.state.players[actor].cards_played_this_turn == 0:
                 return TargetMode.NONE
             return card.target_mode
         raise RuntimeError("unknown target condition: {}".format(card.target_condition))

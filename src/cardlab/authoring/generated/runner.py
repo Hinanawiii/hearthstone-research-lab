@@ -124,6 +124,13 @@ from .keyword_batch import (
     build_review_scenario as build_keyword_batch_scenario,
 )
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
+from .special_action_batch import AUTHORING_METADATA as SPECIAL_ACTION_BATCH_METADATA
+from .special_action_batch import (
+    SCENARIO_CARD_NAMES_ZH as SPECIAL_ACTION_BATCH_CARD_NAMES,
+)
+from .special_action_batch import (
+    build_review_scenario as build_special_action_batch_scenario,
+)
 from .status_batch import (
     AUTHORING_METADATA as STATUS_BATCH_METADATA,
 )
@@ -277,6 +284,14 @@ for event_card_id, event_metadata in EVENT_TRIGGER_BATCH_METADATA.items():
     CARD_METADATA[event_card_id] = event_metadata
     SCENARIO_BUILDERS[event_card_id] = partial(build_event_trigger_batch_scenario, event_card_id)
     SCENARIO_CARD_NAME_CATALOGS[event_card_id] = EVENT_TRIGGER_BATCH_CARD_NAMES
+
+for special_card_id, special_metadata in SPECIAL_ACTION_BATCH_METADATA.items():
+    CARD_MODULES[special_card_id] = "src/cardlab/authoring/generated/special_action_batch.py"
+    CARD_METADATA[special_card_id] = special_metadata
+    SCENARIO_BUILDERS[special_card_id] = partial(
+        build_special_action_batch_scenario, special_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[special_card_id] = SPECIAL_ACTION_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

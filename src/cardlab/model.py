@@ -22,10 +22,13 @@ class TargetMode(str, Enum):
     FRIENDLY_UNDEAD = "friendly_undead"
     DAMAGED_ENEMY_MINION = "damaged_enemy_minion"
     UNDAMAGED_MINION = "undamaged_minion"
+    ENEMY_TAUNT_MINION = "enemy_taunt_minion"
+    HIGH_ATTACK_MINION = "high_attack_minion"
 
 
 class ActionType(str, Enum):
     PLAY = "play"
+    TRADE = "trade"
     ATTACK = "attack"
     HERO_ATTACK = "hero_attack"
     HERO_POWER = "hero_power"
@@ -99,6 +102,10 @@ class CardDef:
     aura_health: int = 0
     aura_race: str = ""
     aura_adjacent_only: bool = False
+    tradeable: bool = False
+    outcast_effects: Tuple[Effect, ...] = ()
+    outcast_cost: int = -1
+    combo_effects: Tuple[Effect, ...] = ()
 
 
 @dataclass
@@ -174,6 +181,7 @@ class PlayerState:
     weapon: Optional[Weapon] = None
     overload_pending: int = 0
     overloaded_mana: int = 0
+    cards_played_this_turn: int = 0
 
 
 @dataclass(frozen=True)
