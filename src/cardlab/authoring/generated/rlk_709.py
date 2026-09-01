@@ -11,6 +11,7 @@ CARD = CardDef(
     name="冷酷严冬",
     card_type=CardType.SPELL,
     cost=4,
+    runes=("FROST",),
     effects=(
         Effect("damage_all", 2, target="enemy_characters"),
         Effect("draw", 1, target="owner"),

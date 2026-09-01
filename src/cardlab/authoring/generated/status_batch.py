@@ -33,6 +33,7 @@ CARDS: Dict[str, CardDef] = {
         "反魔法护罩",
         CardType.SPELL,
         3,
+        runes=("UNHOLY",),
         effects=(
             Effect("buff_all", target="friendly_minions", attack=1, health=1),
             Effect("grant_keyword_all", target="friendly_minions", keyword="elusive"),

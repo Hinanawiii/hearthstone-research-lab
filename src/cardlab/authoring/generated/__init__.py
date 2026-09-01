@@ -31,6 +31,7 @@ from .keyword_batch import CARDS as KEYWORD_BATCH_CARDS
 from .random_summon_batch import CARDS as RANDOM_SUMMON_BATCH_CARDS
 from .random_summon_batch import TOKEN_CARDS as RANDOM_SUMMON_BATCH_TOKEN_CARDS
 from .rlk_709 import CARD as RLK_709
+from .rune_location_batch import CARDS as RUNE_LOCATION_BATCH_CARDS
 from .special_action_batch import CARDS as SPECIAL_ACTION_BATCH_CARDS
 from .special_action_batch import TOKEN_CARDS as SPECIAL_ACTION_BATCH_TOKEN_CARDS
 from .status_batch import CARDS as STATUS_BATCH_CARDS
@@ -63,6 +64,7 @@ GENERATED_CARDS.update(CORPSE_BATCH_CARDS)
 GENERATED_CARDS.update(RANDOM_SUMMON_BATCH_CARDS)
 GENERATED_CARDS.update(ZONE_SUMMON_BATCH_CARDS)
 GENERATED_CARDS.update(DEATH_HISTORY_BATCH_CARDS)
+GENERATED_CARDS.update(RUNE_LOCATION_BATCH_CARDS)
 
 GENERATED_TOKEN_CARDS: Dict[str, CardDef] = dict(SUMMON_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(CHOOSE_ONE_BATCH_TOKEN_CARDS)
@@ -101,6 +103,7 @@ def generated_dependencies(card_id: str) -> Dict[str, CardDef]:
         raise ValueError("unknown generated card: {}".format(card_id)) from error
     available = dict(CARDS)
     available.update(GENERATED_TOKEN_CARDS)
+    available.update(GENERATED_CARDS)
     dependencies: Dict[str, CardDef] = {}
     pending = list(referenced_card_ids(card))
     while pending:
@@ -129,6 +132,7 @@ def runtime_registry(card_ids: Iterable[str]) -> Dict[str, CardDef]:
             registry[card_id] = GENERATED_CARDS[card_id]
         except KeyError as error:
             raise ValueError("unknown generated card: {}".format(card_id)) from error
+        registry.update(generated_dependencies(card_id))
     return registry
 
 
@@ -161,6 +165,7 @@ __all__ = [
     "RANDOM_SUMMON_BATCH_CARDS",
     "RANDOM_SUMMON_BATCH_TOKEN_CARDS",
     "RLK_709",
+    "RUNE_LOCATION_BATCH_CARDS",
     "SPECIAL_ACTION_BATCH_CARDS",
     "SPECIAL_ACTION_BATCH_TOKEN_CARDS",
     "STATUS_BATCH_CARDS",

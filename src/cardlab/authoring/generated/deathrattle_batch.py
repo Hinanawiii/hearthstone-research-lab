@@ -132,6 +132,7 @@ CARDS: Dict[str, CardDef] = {
         3,
         reborn=True,
         races=("UNDEAD",),
+        runes=("FROST",),
         effects=(Effect("random_damage", 2, target="enemy_character", repeats=1),),
         deathrattle_effects=(
             Effect("random_damage", 2, target="enemy_character", repeats=1),

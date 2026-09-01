@@ -63,6 +63,8 @@ CARDS: Dict[str, CardDef] = {
         "活力分流",
         CardType.SPELL,
         2,
+        runes=("BLOOD",),
+        spends_corpses=True,
         effects=(
             Effect("buff_hand_minions", attack=1, health=1),
             Effect("buff_hand_minions", attack=1, health=1, corpse_cost=2),
@@ -73,6 +75,8 @@ CARDS: Dict[str, CardDef] = {
         "墓地之力",
         CardType.SPELL,
         4,
+        runes=("UNHOLY", "UNHOLY", "UNHOLY"),
+        spends_corpses=True,
         effects=(
             Effect("buff_all", attack=1, target="friendly_minions"),
             Effect("buff_all", attack=2, target="friendly_minions", corpse_cost=5),
@@ -83,6 +87,8 @@ CARDS: Dict[str, CardDef] = {
         "亡者大军",
         CardType.SPELL,
         5,
+        runes=("UNHOLY",),
+        spends_corpses=True,
         effects=(Effect("summon_up_to_corpses", 5, card_id="RLK_008t"),),
     ),
     "CORE_RLK_118": CardDef(
@@ -90,6 +96,8 @@ CARDS: Dict[str, CardDef] = {
         "坟墓守卫",
         CardType.SPELL,
         4,
+        runes=("UNHOLY", "UNHOLY"),
+        spends_corpses=True,
         effects=(
             Effect("summon", 2, card_id="RLK_118t3"),
             Effect("grant_keyword_summoned", keyword="reborn", corpse_cost=4),
@@ -104,6 +112,8 @@ CARDS: Dict[str, CardDef] = {
         8,
         taunt=True,
         races=("UNDEAD",),
+        runes=("BLOOD",),
+        spends_corpses=True,
         effects=(Effect("summon_up_to_corpses", 6, card_id="RLK_061t"),),
     ),
     "CORE_RLK_505": CardDef(
@@ -114,6 +124,8 @@ CARDS: Dict[str, CardDef] = {
         5,
         5,
         races=("UNDEAD",),
+        runes=("FROST", "FROST"),
+        spends_corpses=True,
         effects=(Effect("random_damage_spend_up_to_corpses", 5, attack=2),),
     ),
 }

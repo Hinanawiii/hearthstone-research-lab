@@ -9,6 +9,7 @@ class CardType(str, Enum):
     MINION = "minion"
     SPELL = "spell"
     WEAPON = "weapon"
+    LOCATION = "location"
 
 
 class TargetMode(str, Enum):
@@ -32,6 +33,7 @@ class ActionType(str, Enum):
     ATTACK = "attack"
     HERO_ATTACK = "hero_attack"
     HERO_POWER = "hero_power"
+    DISCOVER = "discover"
     END_TURN = "end_turn"
 
 
@@ -113,6 +115,9 @@ class CardDef:
     summon_multiplier: int = 1
     rarity: str = ""
     casts_when_drawn: bool = False
+    runes: Tuple[str, ...] = ()
+    spends_corpses: bool = False
+    corpse_gain_multiplier: int = 1
 
 
 @dataclass
@@ -171,6 +176,14 @@ class Weapon:
 
 
 @dataclass
+class Location:
+    entity_id: int
+    card_id: str
+    durability: int
+    cooldown: int = 0
+
+
+@dataclass
 class PlayerState:
     hero_health: int = 30
     hero_armor: int = 0
@@ -187,11 +200,13 @@ class PlayerState:
     hand: List[HandCard] = field(default_factory=list)
     board: List[Minion] = field(default_factory=list)
     weapon: Optional[Weapon] = None
+    locations: List[Location] = field(default_factory=list)
     overload_pending: int = 0
     overloaded_mana: int = 0
     cards_played_this_turn: int = 0
     corpses: int = 0
     graveyard: List[str] = field(default_factory=list)
+    friendly_undead_died_since_last_turn: bool = False
 
 
 @dataclass(frozen=True)
@@ -237,6 +252,8 @@ class GameState:
     turn: int = 0
     winner: Optional[int] = None
     terminal_reason: Optional[str] = None
+    pending_discover_player: Optional[int] = None
+    pending_discover_options: Tuple[str, ...] = ()
 
     @property
     def terminal(self) -> bool:

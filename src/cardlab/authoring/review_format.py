@@ -188,6 +188,11 @@ def _review_player(
             "corpses": int(player.get("corpses", 0)),
             "fatigue": int(player["fatigue"]),
         },
+        "history": {
+            "friendly_undead_died_since_last_turn": bool(
+                player.get("friendly_undead_died_since_last_turn", False)
+            )
+        },
         "zones": {
             "hand": {
                 "count": int(player["hand_count"]),
@@ -490,6 +495,9 @@ def _render_state(
                     resources.get("overloaded_mana", 0),
                 )
             )
+        history = _mapping(item.get("history", {}), "history")
+        if history.get("friendly_undead_died_since_last_turn"):
+            lines.append("  历史：自我方上回合结束后，已有友方亡灵死亡。")
     return lines
 
 

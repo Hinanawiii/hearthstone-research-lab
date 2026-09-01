@@ -15,6 +15,7 @@ from .model import (
     Effect,
     GameState,
     HandCard,
+    Location,
     Minion,
     PlayerState,
     TargetMode,
@@ -82,6 +83,13 @@ class Game:
         actor = self.state.active_player if player is None else player
         if actor != self.state.active_player:
             return []
+        if self.state.pending_discover_player is not None:
+            if actor != self.state.pending_discover_player:
+                return []
+            return [
+                Action(ActionType.DISCOVER, choice=index)
+                for index in range(len(self.state.pending_discover_options))
+            ]
         own = self.state.players[actor]
         actions: List[Action] = [Action.end_turn()]
 
@@ -89,7 +97,9 @@ class Game:
             card = self.cards[hand_card.card_id]
             if self._effective_card_cost(actor, hand_card, card) <= (own.mana + own.temporary_mana):
                 if not card.requires_weapon or own.weapon is not None:
-                    if card.card_type != CardType.MINION or len(own.board) < 7:
+                    if card.card_type not in {CardType.MINION, CardType.LOCATION} or (
+                        len(own.board) + len(own.locations) < 7
+                    ):
                         if card.choose_one_effects:
                             if len(card.choose_one_effects) != len(card.choose_one_target_modes):
                                 raise RuntimeError("choose-one effects and target modes differ")
@@ -191,6 +201,8 @@ class Game:
             self._resolve_board_triggers("owner_hero_power", owner=actor)
             self._cleanup_deaths()
             self._check_terminal()
+        elif action.action_type == ActionType.DISCOVER:
+            self._resolve_discover(actor, action)
         else:
             raise IllegalAction("unknown action type")
         self.history.append(
@@ -246,6 +258,14 @@ class Game:
             )
             player.hero_attack = card.attack + player.hero_temporary_attack
             self._refresh_dynamic_attack_bonuses()
+        elif card.card_type == CardType.LOCATION:
+            player.locations.append(
+                Location(
+                    entity_id=self._entity_id(),
+                    card_id=card.card_id,
+                    durability=card.durability,
+                )
+            )
         player.overload_pending += card.overload
         self._resolve_effects(actor, card, action.target, played_minion)
         if card.choose_one_effects:
@@ -297,6 +317,17 @@ class Game:
         insertion_index = self.rng.randrange(len(player.deck) + 1)
         player.deck.insert(insertion_index, hand_card.card_id)
         self._check_terminal()
+
+    def _resolve_discover(self, actor: int, action: Action) -> None:
+        if self.state.pending_discover_player != actor or action.choice is None:
+            raise IllegalAction("no discover choice is pending")
+        options = self.state.pending_discover_options
+        if action.choice < 0 or action.choice >= len(options):
+            raise IllegalAction("discover choice is out of range")
+        chosen_card_id = options[action.choice]
+        self.state.pending_discover_player = None
+        self.state.pending_discover_options = ()
+        self._add_to_hand(actor, chosen_card_id)
 
     def _resolve_effects(
         self,
@@ -516,7 +547,7 @@ class Game:
                     ):
                         self._grant_minion_keyword(target, effect.keyword)
             elif effect.kind == "gain_corpses":
-                self.state.players[actor].corpses += effect.amount
+                self._gain_corpses(actor, effect.amount)
             elif effect.kind == "add_random_race_to_hand":
                 race_candidates = [
                     card.card_id
@@ -531,6 +562,19 @@ class Game:
                 player = self.state.players[actor]
                 player.deck.extend(effect.card_id for _ in range(effect.amount))
                 self.rng.shuffle(player.deck)
+            elif effect.kind == "discover_from_pool":
+                self._start_discover(actor, effect.card_ids)
+            elif effect.kind == "discover_from_pool_if_selected_dead":
+                if selected is None or selected.kind != "minion":
+                    raise RuntimeError("conditional discover requires a minion target")
+                selected_minion = self._find_minion(
+                    selected.player, selected.entity_id
+                )
+                if selected_minion.health <= 0:
+                    self._start_discover(actor, effect.card_ids)
+            elif effect.kind == "discover_from_pool_if_undead_died":
+                if self.state.players[actor].friendly_undead_died_since_last_turn:
+                    self._start_discover(actor, effect.card_ids)
             elif effect.kind == "summon_up_to_corpses":
                 player = self.state.players[actor]
                 summon_count = min(effect.amount, player.corpses)
@@ -690,6 +734,8 @@ class Game:
                     actor,
                     partial(self._matches_race, race=effect.race),
                 )
+            elif effect.kind == "draw_spends_corpses":
+                self._draw_filtered(actor, lambda definition: definition.spends_corpses)
             elif effect.kind == "copy_random_enemy_deck":
                 enemy_deck = self.state.players[1 - actor].deck
                 if enemy_deck:
@@ -967,6 +1013,11 @@ class Game:
                 for target in self._group_targets(actor, effect.target, played_minion):
                     if target.kind == "minion":
                         self._find_minion(target.player, target.entity_id).health = 0
+            elif effect.kind == "destroy_all_minions_and_locations":
+                for player in self.state.players:
+                    for minion in player.board:
+                        minion.health = 0
+                    player.locations = []
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
 
@@ -1161,6 +1212,7 @@ class Game:
         current.hero_temporary_attack = 0
         current.temporary_mana = 0
         current.overloaded_mana = 0
+        current.friendly_undead_died_since_last_turn = False
         self.state.active_player = 1 - self.state.active_player
         self._start_turn(self.state.active_player)
 
@@ -1727,6 +1779,31 @@ class Game:
                 multiplier *= definition.summon_multiplier
         return multiplier
 
+    def _corpse_gain_multiplier(self, actor: int) -> int:
+        multiplier = 1
+        for minion in self.state.players[actor].board:
+            if minion.health <= 0:
+                continue
+            definition = self.cards.get(minion.card_id)
+            if definition is not None:
+                multiplier *= definition.corpse_gain_multiplier
+        return multiplier
+
+    def _gain_corpses(self, actor: int, amount: int) -> None:
+        self.state.players[actor].corpses += amount * self._corpse_gain_multiplier(actor)
+
+    def _start_discover(self, actor: int, candidate_ids: Tuple[str, ...]) -> None:
+        if self.state.pending_discover_player is not None:
+            raise RuntimeError("nested discover choices are not supported")
+        candidates = list(dict.fromkeys(card_id for card_id in candidate_ids if card_id in self.cards))
+        if not candidates:
+            return
+        option_count = min(3, len(candidates))
+        self.state.pending_discover_player = actor
+        self.state.pending_discover_options = tuple(
+            self.rng.sample(candidates, option_count)
+        )
+
     def _summon_random_collectible_minion(
         self, actor: int, cost: int
     ) -> Optional[Minion]:
@@ -1785,7 +1862,9 @@ class Game:
                 card = self.cards.get(minion.card_id)
                 player.graveyard.append(minion.card_id)
                 if card is not None and card.leaves_corpse:
-                    player.corpses += 1
+                    self._gain_corpses(player_index, 1)
+                if card is not None and "UNDEAD" in card.races:
+                    player.friendly_undead_died_since_last_turn = True
                 deathrattle_effects = (
                     card.deathrattle_effects if card is not None else ()
                 ) + minion.attached_deathrattle_effects
@@ -1876,6 +1955,13 @@ class Game:
             "enemy": self._player_public(enemy, include_hand=False),
             "terminal": self.state.terminal,
             "winner": self.state.winner,
+            "pending_discover": {
+                "player": self.state.pending_discover_player,
+                "options": list(self.state.pending_discover_options)
+                if self.state.pending_discover_player == player
+                else [],
+                "option_count": len(self.state.pending_discover_options),
+            },
         }
 
     def public_snapshot(self) -> Dict[str, Any]:
@@ -1886,6 +1972,10 @@ class Game:
             "terminal": self.state.terminal,
             "winner": self.state.winner,
             "terminal_reason": self.state.terminal_reason,
+            "pending_discover_player": self.state.pending_discover_player,
+            "pending_discover_option_count": len(
+                self.state.pending_discover_options
+            ),
         }
 
     @staticmethod
@@ -1902,12 +1992,16 @@ class Game:
             "overloaded_mana": player.overloaded_mana,
             "corpses": player.corpses,
             "graveyard": list(player.graveyard),
+            "friendly_undead_died_since_last_turn": (
+                player.friendly_undead_died_since_last_turn
+            ),
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
             "deck_count": len(player.deck),
             "hand_count": len(player.hand),
             "board": [asdict(minion) for minion in player.board],
             "weapon": asdict(player.weapon) if player.weapon is not None else None,
+            "locations": [asdict(location) for location in player.locations],
         }
         if include_hand:
             data["hand"] = [asdict(card) for card in player.hand]

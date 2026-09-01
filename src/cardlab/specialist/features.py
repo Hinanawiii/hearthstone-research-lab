@@ -16,7 +16,8 @@ CONCEPT_FEATURES = (
     "playable_minion_mana",
 )
 STATE_SIZE = 20 + 3 * len(CARD_IDS) + len(CONCEPT_FEATURES)
-ACTION_SIZE = 12 + len(CARD_IDS)
+ACTION_TYPE_SIZE = len(ActionType)
+ACTION_SIZE = ACTION_TYPE_SIZE + 8 + len(CARD_IDS)
 
 
 def _clip(value: float, scale: float) -> float:
@@ -90,14 +91,14 @@ def encode_action(observation: Dict[str, Any], action: Action) -> List[float]:
     values[action_types.index(action.action_type)] = 1.0
     card_id = _source_card_id(observation, action.source_id)
     if card_id is not None:
-        values[4 + CARD_INDEX[card_id]] = 1.0
+        values[ACTION_TYPE_SIZE + CARD_INDEX[card_id]] = 1.0
         card = CARDS[card_id]
-        offset = 4 + len(CARD_IDS)
+        offset = ACTION_TYPE_SIZE + len(CARD_IDS)
         values[offset] = _clip(float(card.cost), 10)
         values[offset + 1] = _clip(float(card.attack), 10)
         values[offset + 2] = _clip(float(card.health), 10)
     else:
-        offset = 4 + len(CARD_IDS)
+        offset = ACTION_TYPE_SIZE + len(CARD_IDS)
     if action.target:
         own_target = action.target.player == observation["viewer"]
         values[offset + 3] = 1.0 if own_target else -1.0

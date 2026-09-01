@@ -145,6 +145,13 @@ from .random_summon_batch import (
     build_review_scenario as build_random_summon_batch_scenario,
 )
 from .rlk_709 import AUTHORING_METADATA, SCENARIO_CARD_NAMES_ZH, build_review_scenario
+from .rune_location_batch import AUTHORING_METADATA as RUNE_LOCATION_BATCH_METADATA
+from .rune_location_batch import (
+    SCENARIO_CARD_NAMES_ZH as RUNE_LOCATION_BATCH_CARD_NAMES,
+)
+from .rune_location_batch import (
+    build_review_scenario as build_rune_location_batch_scenario,
+)
 from .special_action_batch import AUTHORING_METADATA as SPECIAL_ACTION_BATCH_METADATA
 from .special_action_batch import (
     SCENARIO_CARD_NAMES_ZH as SPECIAL_ACTION_BATCH_CARD_NAMES,
@@ -358,6 +365,16 @@ for death_history_card_id, death_history_metadata in DEATH_HISTORY_BATCH_METADAT
         build_death_history_batch_scenario, death_history_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[death_history_card_id] = DEATH_HISTORY_BATCH_CARD_NAMES
+
+for rune_location_card_id, rune_location_metadata in RUNE_LOCATION_BATCH_METADATA.items():
+    CARD_MODULES[rune_location_card_id] = (
+        "src/cardlab/authoring/generated/rune_location_batch.py"
+    )
+    CARD_METADATA[rune_location_card_id] = rune_location_metadata
+    SCENARIO_BUILDERS[rune_location_card_id] = partial(
+        build_rune_location_batch_scenario, rune_location_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[rune_location_card_id] = RUNE_LOCATION_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

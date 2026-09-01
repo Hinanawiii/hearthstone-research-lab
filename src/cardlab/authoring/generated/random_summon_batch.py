@@ -94,6 +94,8 @@ CARDS: Dict[str, CardDef] = {
         "凉心农场",
         CardType.SPELL,
         3,
+        runes=("UNHOLY",),
+        spends_corpses=True,
         effects=(Effect("summon_random_cost_spend_corpses", 8),),
     ),
     "CORE_LOOT_309": CardDef(
