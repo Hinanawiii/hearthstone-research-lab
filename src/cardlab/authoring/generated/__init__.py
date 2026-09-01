@@ -36,6 +36,7 @@ from .summon_batch import CARDS as SUMMON_BATCH_CARDS
 from .summon_batch import TOKEN_CARDS as SUMMON_BATCH_TOKEN_CARDS
 from .tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
 from .weapon_batch import CARDS as WEAPON_BATCH_CARDS
+from .zone_summon_batch import CARDS as ZONE_SUMMON_BATCH_CARDS
 
 GENERATED_CARDS: Dict[str, CardDef] = {
     card.card_id: card for card in (RLK_709, CORE_DS1_185, CORE_CS2_023, CORE_CS2_179)
@@ -58,6 +59,7 @@ GENERATED_CARDS.update(EVENT_TRIGGER_BATCH_CARDS)
 GENERATED_CARDS.update(SPECIAL_ACTION_BATCH_CARDS)
 GENERATED_CARDS.update(CORPSE_BATCH_CARDS)
 GENERATED_CARDS.update(RANDOM_SUMMON_BATCH_CARDS)
+GENERATED_CARDS.update(ZONE_SUMMON_BATCH_CARDS)
 
 GENERATED_TOKEN_CARDS: Dict[str, CardDef] = dict(SUMMON_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(CHOOSE_ONE_BATCH_TOKEN_CARDS)
@@ -155,6 +157,7 @@ __all__ = [
     "SUMMON_BATCH_TOKEN_CARDS",
     "TRIBE_POISON_BATCH_CARDS",
     "WEAPON_BATCH_CARDS",
+    "ZONE_SUMMON_BATCH_CARDS",
     "generated_dependencies",
     "referenced_card_ids",
     "runtime_registry",

@@ -379,17 +379,22 @@ class Game:
                     self._damage(selected, self.state.players[actor].hero_attack)
                     self._resolve_damage_triggers()
             elif effect.kind == "summon":
-                for _ in range(effect.amount):
+                summon_multiplier = self._summon_multiplier(actor)
+                for _ in range(effect.amount * summon_multiplier):
                     summoned = self._summon(actor, effect.card_id)
                     if summoned is None:
                         break
                     summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_sequence":
+                summon_multiplier = self._summon_multiplier(actor)
                 for card_id in effect.card_ids:
-                    summoned = self._summon(actor, card_id)
-                    if summoned is None:
-                        break
-                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+                    for _ in range(summon_multiplier):
+                        summoned = self._summon(actor, card_id)
+                        if summoned is None:
+                            break
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
             elif effect.kind == "summon_random":
                 summon_candidates = [
                     card_id
@@ -398,33 +403,104 @@ class Game:
                     and self.cards[card_id].card_type == CardType.MINION
                 ]
                 if summon_candidates:
-                    summoned = self._summon(actor, self.rng.choice(summon_candidates))
-                    if summoned is not None:
+                    for _ in range(self._summon_multiplier(actor)):
+                        summoned = self._summon(
+                            actor, self.rng.choice(summon_candidates)
+                        )
+                        if summoned is None:
+                            break
                         summoned_entities.append(
                             TargetRef.minion(actor, summoned.entity_id)
                         )
             elif effect.kind == "summon_random_hand_cost":
                 cost = len(self.state.players[actor].hand)
-                summoned = self._summon_random_collectible_minion(actor, cost)
-                if summoned is not None:
+                for _ in range(self._summon_multiplier(actor)):
+                    summoned = self._summon_random_collectible_minion(actor, cost)
+                    if summoned is None:
+                        break
                     summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_random_cost_spend_corpses":
                 player = self.state.players[actor]
                 spent = min(effect.amount, player.corpses)
                 player.corpses -= spent
-                summoned = self._summon_random_collectible_minion(actor, spent)
-                if summoned is not None:
+                for _ in range(self._summon_multiplier(actor)):
+                    summoned = self._summon_random_collectible_minion(actor, spent)
+                    if summoned is None:
+                        break
                     summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "summon_random_deck_minion_cost_at_most":
                 player = self.state.players[actor]
-                deck_candidates = [
-                    index
-                    for index, card_id in enumerate(player.deck)
-                    if card_id in self.cards
-                    and self.cards[card_id].card_type == CardType.MINION
-                    and self.cards[card_id].cost <= effect.amount
-                ]
-                if deck_candidates and len(player.board) < 7:
+                for _ in range(self._summon_multiplier(actor)):
+                    deck_candidates = [
+                        index
+                        for index, card_id in enumerate(player.deck)
+                        if card_id in self.cards
+                        and self.cards[card_id].card_type == CardType.MINION
+                        and self.cards[card_id].cost <= effect.amount
+                    ]
+                    if not deck_candidates or len(player.board) >= 7:
+                        break
+                    card_id = player.deck.pop(self.rng.choice(deck_candidates))
+                    summoned = self._summon(actor, card_id)
+                    if summoned is None:
+                        break
+                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
+            elif effect.kind == "summon_random_opponent_hand_minion":
+                opponent = self.state.players[1 - actor]
+                for _ in range(self._summon_multiplier(actor)):
+                    hand_candidates = [
+                        hand_card
+                        for hand_card in opponent.hand
+                        if hand_card.card_id in self.cards
+                        and self.cards[hand_card.card_id].card_type == CardType.MINION
+                    ]
+                    if not hand_candidates or len(opponent.board) >= 7:
+                        break
+                    chosen_hand_card = self.rng.choice(hand_candidates)
+                    opponent.hand.remove(chosen_hand_card)
+                    summoned = self._summon(
+                        1 - actor,
+                        chosen_hand_card.card_id,
+                        attack_bonus=chosen_hand_card.attack_bonus,
+                        health_bonus=chosen_hand_card.health_bonus,
+                    )
+                    if summoned is not None:
+                        summoned_entities.append(
+                            TargetRef.minion(1 - actor, summoned.entity_id)
+                        )
+            elif effect.kind == "summon_random_demon_from_hand_and_deck":
+                player = self.state.players[actor]
+                summon_multiplier = self._summon_multiplier(actor)
+                for _ in range(summon_multiplier):
+                    hand_candidates = [
+                        hand_card
+                        for hand_card in player.hand
+                        if hand_card.card_id in self.cards
+                        and "DEMON" in self.cards[hand_card.card_id].races
+                    ]
+                    if not hand_candidates or len(player.board) >= 7:
+                        break
+                    chosen_hand_card = self.rng.choice(hand_candidates)
+                    player.hand.remove(chosen_hand_card)
+                    summoned = self._summon(
+                        actor,
+                        chosen_hand_card.card_id,
+                        attack_bonus=chosen_hand_card.attack_bonus,
+                        health_bonus=chosen_hand_card.health_bonus,
+                    )
+                    if summoned is not None:
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
+                for _ in range(summon_multiplier):
+                    deck_candidates = [
+                        index
+                        for index, card_id in enumerate(player.deck)
+                        if card_id in self.cards
+                        and "DEMON" in self.cards[card_id].races
+                    ]
+                    if not deck_candidates or len(player.board) >= 7:
+                        break
                     card_id = player.deck.pop(self.rng.choice(deck_candidates))
                     summoned = self._summon(actor, card_id)
                     if summoned is not None:
@@ -454,11 +530,18 @@ class Game:
                 player = self.state.players[actor]
                 summon_count = min(effect.amount, player.corpses)
                 for _ in range(summon_count):
-                    summoned = self._summon(actor, effect.card_id)
-                    if summoned is None:
+                    successful_summons = 0
+                    for _ in range(self._summon_multiplier(actor)):
+                        summoned = self._summon(actor, effect.card_id)
+                        if summoned is None:
+                            break
+                        successful_summons += 1
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
+                    if not successful_summons:
                         break
                     player.corpses -= 1
-                    summoned_entities.append(TargetRef.minion(actor, summoned.entity_id))
             elif effect.kind == "random_damage_spend_up_to_corpses":
                 player = self.state.players[actor]
                 spent = min(effect.amount, player.corpses)
@@ -1500,7 +1583,14 @@ class Game:
         player.hero_attack = card.attack + player.hero_temporary_attack
         self._refresh_dynamic_attack_bonuses()
 
-    def _summon(self, actor: int, card_id: str) -> Optional[Minion]:
+    def _summon(
+        self,
+        actor: int,
+        card_id: str,
+        *,
+        attack_bonus: int = 0,
+        health_bonus: int = 0,
+    ) -> Optional[Minion]:
         player = self.state.players[actor]
         if len(player.board) >= 7:
             return None
@@ -1513,9 +1603,9 @@ class Game:
         minion = Minion(
             entity_id=self._entity_id(),
             card_id=card.card_id,
-            attack=card.attack,
-            health=card.health,
-            max_health=card.health,
+            attack=card.attack + attack_bonus,
+            health=card.health + health_bonus,
+            max_health=card.health + health_bonus,
             taunt=card.taunt,
             charge=card.charge,
             stealth=card.stealth,
@@ -1537,6 +1627,16 @@ class Game:
             played_races=card.races,
         )
         return minion
+
+    def _summon_multiplier(self, actor: int) -> int:
+        multiplier = 1
+        for minion in self.state.players[actor].board:
+            if minion.health <= 0:
+                continue
+            definition = self.cards.get(minion.card_id)
+            if definition is not None:
+                multiplier *= definition.summon_multiplier
+        return multiplier
 
     def _summon_random_collectible_minion(
         self, actor: int, cost: int

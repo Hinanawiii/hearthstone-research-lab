@@ -110,6 +110,7 @@ class CardDef:
     choose_one_effects: Tuple[Tuple[Effect, ...], ...] = ()
     choose_one_target_modes: Tuple[TargetMode, ...] = ()
     leaves_corpse: bool = True
+    summon_multiplier: int = 1
 
 
 @dataclass

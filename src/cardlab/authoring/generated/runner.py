@@ -173,6 +173,9 @@ from .tribe_poison_batch import (
 from .weapon_batch import AUTHORING_METADATA as WEAPON_BATCH_METADATA
 from .weapon_batch import SCENARIO_CARD_NAMES_ZH as WEAPON_BATCH_CARD_NAMES
 from .weapon_batch import build_review_scenario as build_weapon_batch_scenario
+from .zone_summon_batch import AUTHORING_METADATA as ZONE_SUMMON_BATCH_METADATA
+from .zone_summon_batch import SCENARIO_CARD_NAMES_ZH as ZONE_SUMMON_BATCH_CARD_NAMES
+from .zone_summon_batch import build_review_scenario as build_zone_summon_batch_scenario
 
 CARD_MODULES: Dict[str, str] = {
     "RLK_709": "src/cardlab/authoring/generated/rlk_709.py",
@@ -332,6 +335,16 @@ for random_summon_card_id, random_summon_metadata in RANDOM_SUMMON_BATCH_METADAT
         build_random_summon_batch_scenario, random_summon_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[random_summon_card_id] = RANDOM_SUMMON_BATCH_CARD_NAMES
+
+for zone_summon_card_id, zone_summon_metadata in ZONE_SUMMON_BATCH_METADATA.items():
+    CARD_MODULES[zone_summon_card_id] = (
+        "src/cardlab/authoring/generated/zone_summon_batch.py"
+    )
+    CARD_METADATA[zone_summon_card_id] = zone_summon_metadata
+    SCENARIO_BUILDERS[zone_summon_card_id] = partial(
+        build_zone_summon_batch_scenario, zone_summon_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[zone_summon_card_id] = ZONE_SUMMON_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
