@@ -93,6 +93,13 @@ from .dynamic_zone_batch import (
 from .dynamic_zone_batch import (
     build_review_scenario as build_dynamic_zone_batch_scenario,
 )
+from .event_trigger_batch import AUTHORING_METADATA as EVENT_TRIGGER_BATCH_METADATA
+from .event_trigger_batch import (
+    SCENARIO_CARD_NAMES_ZH as EVENT_TRIGGER_BATCH_CARD_NAMES,
+)
+from .event_trigger_batch import (
+    build_review_scenario as build_event_trigger_batch_scenario,
+)
 from .keyword_batch import (
     AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
 )
@@ -140,9 +147,7 @@ CARD_METADATA: Dict[str, Mapping[str, Any]] = {
     "CORE_CS2_023": CORE_CS2_023_METADATA,
     "CORE_CS2_179": CORE_CS2_179_METADATA,
 }
-SCENARIO_BUILDERS: Dict[
-    str, Callable[[Dict[str, CardDef]], Dict[str, Any]]
-] = {
+SCENARIO_BUILDERS: Dict[str, Callable[[Dict[str, CardDef]], Dict[str, Any]]] = {
     "RLK_709": build_review_scenario,
     "CORE_DS1_185": build_core_ds1_185_scenario,
     "CORE_CS2_023": build_core_cs2_023_scenario,
@@ -156,49 +161,31 @@ SCENARIO_CARD_NAME_CATALOGS: Dict[str, Mapping[str, str]] = {
 }
 
 for keyword_card_id, keyword_metadata in KEYWORD_BATCH_METADATA.items():
-    CARD_MODULES[keyword_card_id] = (
-        "src/cardlab/authoring/generated/keyword_batch.py"
-    )
+    CARD_MODULES[keyword_card_id] = "src/cardlab/authoring/generated/keyword_batch.py"
     CARD_METADATA[keyword_card_id] = keyword_metadata
-    SCENARIO_BUILDERS[keyword_card_id] = partial(
-        build_keyword_batch_scenario, keyword_card_id
-    )
+    SCENARIO_BUILDERS[keyword_card_id] = partial(build_keyword_batch_scenario, keyword_card_id)
     SCENARIO_CARD_NAME_CATALOGS[keyword_card_id] = KEYWORD_BATCH_CARD_NAMES
 
 for damage_card_id, damage_metadata in DAMAGE_BATCH_METADATA.items():
-    CARD_MODULES[damage_card_id] = (
-        "src/cardlab/authoring/generated/damage_batch.py"
-    )
+    CARD_MODULES[damage_card_id] = "src/cardlab/authoring/generated/damage_batch.py"
     CARD_METADATA[damage_card_id] = damage_metadata
-    SCENARIO_BUILDERS[damage_card_id] = partial(
-        build_damage_batch_scenario, damage_card_id
-    )
+    SCENARIO_BUILDERS[damage_card_id] = partial(build_damage_batch_scenario, damage_card_id)
     SCENARIO_CARD_NAME_CATALOGS[damage_card_id] = DAMAGE_BATCH_CARD_NAMES
 
 for status_card_id, status_metadata in STATUS_BATCH_METADATA.items():
-    CARD_MODULES[status_card_id] = (
-        "src/cardlab/authoring/generated/status_batch.py"
-    )
+    CARD_MODULES[status_card_id] = "src/cardlab/authoring/generated/status_batch.py"
     CARD_METADATA[status_card_id] = status_metadata
-    SCENARIO_BUILDERS[status_card_id] = partial(
-        build_status_batch_scenario, status_card_id
-    )
+    SCENARIO_BUILDERS[status_card_id] = partial(build_status_batch_scenario, status_card_id)
     SCENARIO_CARD_NAME_CATALOGS[status_card_id] = STATUS_BATCH_CARD_NAMES
 
 for tribe_card_id, tribe_metadata in TRIBE_POISON_BATCH_METADATA.items():
-    CARD_MODULES[tribe_card_id] = (
-        "src/cardlab/authoring/generated/tribe_poison_batch.py"
-    )
+    CARD_MODULES[tribe_card_id] = "src/cardlab/authoring/generated/tribe_poison_batch.py"
     CARD_METADATA[tribe_card_id] = tribe_metadata
-    SCENARIO_BUILDERS[tribe_card_id] = partial(
-        build_tribe_poison_batch_scenario, tribe_card_id
-    )
+    SCENARIO_BUILDERS[tribe_card_id] = partial(build_tribe_poison_batch_scenario, tribe_card_id)
     SCENARIO_CARD_NAME_CATALOGS[tribe_card_id] = TRIBE_POISON_BATCH_CARD_NAMES
 
 for advanced_card_id, advanced_metadata in ADVANCED_STATUS_BATCH_METADATA.items():
-    CARD_MODULES[advanced_card_id] = (
-        "src/cardlab/authoring/generated/advanced_status_batch.py"
-    )
+    CARD_MODULES[advanced_card_id] = "src/cardlab/authoring/generated/advanced_status_batch.py"
     CARD_METADATA[advanced_card_id] = advanced_metadata
     SCENARIO_BUILDERS[advanced_card_id] = partial(
         build_advanced_status_batch_scenario, advanced_card_id
@@ -206,18 +193,15 @@ for advanced_card_id, advanced_metadata in ADVANCED_STATUS_BATCH_METADATA.items(
     SCENARIO_CARD_NAME_CATALOGS[advanced_card_id] = ADVANCED_STATUS_BATCH_CARD_NAMES
 
 for weapon_card_id, weapon_metadata in WEAPON_BATCH_METADATA.items():
-    CARD_MODULES[weapon_card_id] = (
-        "src/cardlab/authoring/generated/weapon_batch.py"
-    )
+    CARD_MODULES[weapon_card_id] = "src/cardlab/authoring/generated/weapon_batch.py"
     CARD_METADATA[weapon_card_id] = weapon_metadata
-    SCENARIO_BUILDERS[weapon_card_id] = partial(
-        build_weapon_batch_scenario, weapon_card_id
-    )
+    SCENARIO_BUILDERS[weapon_card_id] = partial(build_weapon_batch_scenario, weapon_card_id)
     SCENARIO_CARD_NAME_CATALOGS[weapon_card_id] = WEAPON_BATCH_CARD_NAMES
 
-for conditional_weapon_card_id, conditional_weapon_metadata in (
-    CONDITIONAL_WEAPON_BATCH_METADATA.items()
-):
+for (
+    conditional_weapon_card_id,
+    conditional_weapon_metadata,
+) in CONDITIONAL_WEAPON_BATCH_METADATA.items():
     CARD_MODULES[conditional_weapon_card_id] = (
         "src/cardlab/authoring/generated/conditional_weapon_batch.py"
     )
@@ -225,53 +209,41 @@ for conditional_weapon_card_id, conditional_weapon_metadata in (
     SCENARIO_BUILDERS[conditional_weapon_card_id] = partial(
         build_conditional_weapon_batch_scenario, conditional_weapon_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[conditional_weapon_card_id] = (
-        CONDITIONAL_WEAPON_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[conditional_weapon_card_id] = CONDITIONAL_WEAPON_BATCH_CARD_NAMES
 
 for summon_card_id, summon_metadata in SUMMON_BATCH_METADATA.items():
-    CARD_MODULES[summon_card_id] = (
-        "src/cardlab/authoring/generated/summon_batch.py"
-    )
+    CARD_MODULES[summon_card_id] = "src/cardlab/authoring/generated/summon_batch.py"
     CARD_METADATA[summon_card_id] = summon_metadata
-    SCENARIO_BUILDERS[summon_card_id] = partial(
-        build_summon_batch_scenario, summon_card_id
-    )
+    SCENARIO_BUILDERS[summon_card_id] = partial(build_summon_batch_scenario, summon_card_id)
     SCENARIO_CARD_NAME_CATALOGS[summon_card_id] = SUMMON_BATCH_CARD_NAMES
 
 for deathrattle_card_id, deathrattle_metadata in DEATHRATTLE_BATCH_METADATA.items():
-    CARD_MODULES[deathrattle_card_id] = (
-        "src/cardlab/authoring/generated/deathrattle_batch.py"
-    )
+    CARD_MODULES[deathrattle_card_id] = "src/cardlab/authoring/generated/deathrattle_batch.py"
     CARD_METADATA[deathrattle_card_id] = deathrattle_metadata
     SCENARIO_BUILDERS[deathrattle_card_id] = partial(
         build_deathrattle_batch_scenario, deathrattle_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[deathrattle_card_id] = (
-        DEATHRATTLE_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[deathrattle_card_id] = DEATHRATTLE_BATCH_CARD_NAMES
 
 for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.items():
-    CARD_MODULES[composite_card_id] = (
-        "src/cardlab/authoring/generated/composite_spell_batch.py"
-    )
+    CARD_MODULES[composite_card_id] = "src/cardlab/authoring/generated/composite_spell_batch.py"
     CARD_METADATA[composite_card_id] = composite_metadata
     SCENARIO_BUILDERS[composite_card_id] = partial(
         build_composite_spell_batch_scenario, composite_card_id
     )
-    SCENARIO_CARD_NAME_CATALOGS[composite_card_id] = (
-        COMPOSITE_SPELL_BATCH_CARD_NAMES
-    )
+    SCENARIO_CARD_NAME_CATALOGS[composite_card_id] = COMPOSITE_SPELL_BATCH_CARD_NAMES
 
 for dynamic_card_id, dynamic_metadata in DYNAMIC_ZONE_BATCH_METADATA.items():
-    CARD_MODULES[dynamic_card_id] = (
-        "src/cardlab/authoring/generated/dynamic_zone_batch.py"
-    )
+    CARD_MODULES[dynamic_card_id] = "src/cardlab/authoring/generated/dynamic_zone_batch.py"
     CARD_METADATA[dynamic_card_id] = dynamic_metadata
-    SCENARIO_BUILDERS[dynamic_card_id] = partial(
-        build_dynamic_zone_batch_scenario, dynamic_card_id
-    )
+    SCENARIO_BUILDERS[dynamic_card_id] = partial(build_dynamic_zone_batch_scenario, dynamic_card_id)
     SCENARIO_CARD_NAME_CATALOGS[dynamic_card_id] = DYNAMIC_ZONE_BATCH_CARD_NAMES
+
+for event_card_id, event_metadata in EVENT_TRIGGER_BATCH_METADATA.items():
+    CARD_MODULES[event_card_id] = "src/cardlab/authoring/generated/event_trigger_batch.py"
+    CARD_METADATA[event_card_id] = event_metadata
+    SCENARIO_BUILDERS[event_card_id] = partial(build_event_trigger_batch_scenario, event_card_id)
+    SCENARIO_CARD_NAME_CATALOGS[event_card_id] = EVENT_TRIGGER_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
@@ -283,7 +255,9 @@ def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:
         metadata = CARD_METADATA[card_id]
         scenario_builder = SCENARIO_BUILDERS[card_id]
     except KeyError as error:
-        raise ValueError("generated implementation is not registered: {}".format(card_id)) from error
+        raise ValueError(
+            "generated implementation is not registered: {}".format(card_id)
+        ) from error
     if card["source_version"] != metadata["source_version"]:
         raise ValueError("generated implementation source version is stale")
     if card["source_text"] != metadata["source_text_zh"]:
