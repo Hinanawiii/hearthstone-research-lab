@@ -86,6 +86,13 @@ from .deathrattle_batch import (
 from .deathrattle_batch import (
     build_review_scenario as build_deathrattle_batch_scenario,
 )
+from .dynamic_zone_batch import AUTHORING_METADATA as DYNAMIC_ZONE_BATCH_METADATA
+from .dynamic_zone_batch import (
+    SCENARIO_CARD_NAMES_ZH as DYNAMIC_ZONE_BATCH_CARD_NAMES,
+)
+from .dynamic_zone_batch import (
+    build_review_scenario as build_dynamic_zone_batch_scenario,
+)
 from .keyword_batch import (
     AUTHORING_METADATA as KEYWORD_BATCH_METADATA,
 )
@@ -255,6 +262,16 @@ for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.item
     SCENARIO_CARD_NAME_CATALOGS[composite_card_id] = (
         COMPOSITE_SPELL_BATCH_CARD_NAMES
     )
+
+for dynamic_card_id, dynamic_metadata in DYNAMIC_ZONE_BATCH_METADATA.items():
+    CARD_MODULES[dynamic_card_id] = (
+        "src/cardlab/authoring/generated/dynamic_zone_batch.py"
+    )
+    CARD_METADATA[dynamic_card_id] = dynamic_metadata
+    SCENARIO_BUILDERS[dynamic_card_id] = partial(
+        build_dynamic_zone_batch_scenario, dynamic_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[dynamic_card_id] = DYNAMIC_ZONE_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

@@ -42,6 +42,7 @@ class Effect:
     keyword: str = ""
     race: str = ""
     card_id: str = ""
+    card_ids: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,7 @@ class CardDef:
     target_condition: str = ""
     target_optional_if_unavailable: bool = False
     overload: int = 0
+    spell_school: str = ""
 
 
 @dataclass

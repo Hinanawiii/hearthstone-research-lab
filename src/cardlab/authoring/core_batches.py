@@ -8,6 +8,7 @@ from .generated.composite_spell_batch import CARDS as COMPOSITE_SPELL_BATCH_CARD
 from .generated.conditional_weapon_batch import CARDS as CONDITIONAL_WEAPON_BATCH_CARDS
 from .generated.damage_batch import CONTRACTS as DAMAGE_CONTRACTS
 from .generated.deathrattle_batch import CARDS as DEATHRATTLE_BATCH_CARDS
+from .generated.dynamic_zone_batch import CARDS as DYNAMIC_ZONE_BATCH_CARDS
 from .generated.status_batch import CARDS as STATUS_BATCH_CARDS
 from .generated.summon_batch import CARDS as SUMMON_BATCH_CARDS
 from .generated.tribe_poison_batch import CARDS as TRIBE_POISON_BATCH_CARDS
@@ -152,6 +153,8 @@ def classify_core_card(card: Mapping[str, Any]) -> str:
         return "deterministic_damage"
     if card_id in COMPOSITE_SPELL_BATCH_CARDS:
         return "stats_status_and_resources"
+    if card_id in DYNAMIC_ZONE_BATCH_CARDS:
+        return "hand_deck_and_random"
     if (
         card_id in STATUS_BATCH_CARDS
         or card_id in TRIBE_POISON_BATCH_CARDS

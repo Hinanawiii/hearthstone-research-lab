@@ -28,6 +28,7 @@ CARDS: Dict[str, CardDef] = {
         2,
         target_mode=TargetMode.ANY_CHARACTER,
         effects=(Effect("damage", 3), Effect("freeze")),
+        spell_school="FROST",
     ),
     "CORE_CS2_028": CardDef(
         "CORE_CS2_028",
