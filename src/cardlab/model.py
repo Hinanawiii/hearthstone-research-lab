@@ -111,6 +111,8 @@ class CardDef:
     choose_one_target_modes: Tuple[TargetMode, ...] = ()
     leaves_corpse: bool = True
     summon_multiplier: int = 1
+    rarity: str = ""
+    casts_when_drawn: bool = False
 
 
 @dataclass
@@ -149,6 +151,7 @@ class Minion:
     active_weapon_attack_bonus: int = 0
     active_aura_attack_bonus: int = 0
     active_aura_health_bonus: int = 0
+    attached_deathrattle_effects: Tuple[Effect, ...] = ()
 
     def can_attack_ignoring_freeze(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush
@@ -188,6 +191,7 @@ class PlayerState:
     overloaded_mana: int = 0
     cards_played_this_turn: int = 0
     corpses: int = 0
+    graveyard: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

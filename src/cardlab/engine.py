@@ -313,6 +313,7 @@ class Game:
         effects: Tuple[Effect, ...],
         selected: Optional[TargetRef],
         played_minion: Optional[TargetRef],
+        source_snapshot: Optional[Minion] = None,
     ) -> None:
         summoned_entities: List[TargetRef] = []
         for effect in effects:
@@ -526,6 +527,10 @@ class Game:
                 ]
                 if race_candidates:
                     self._add_to_hand(actor, self.rng.choice(race_candidates))
+            elif effect.kind == "shuffle_into_deck":
+                player = self.state.players[actor]
+                player.deck.extend(effect.card_id for _ in range(effect.amount))
+                self.rng.shuffle(player.deck)
             elif effect.kind == "summon_up_to_corpses":
                 player = self.state.players[actor]
                 summon_count = min(effect.amount, player.corpses)
@@ -556,6 +561,69 @@ class Game:
                     self._check_terminal()
                     if self.state.terminal:
                         break
+            elif effect.kind == "random_damage_source_attack":
+                if source_snapshot is None:
+                    raise RuntimeError("source-attack damage requires a death snapshot")
+                for _ in range(max(0, source_snapshot.attack)):
+                    targets = self._enemy_characters(actor)
+                    if not targets:
+                        break
+                    self._damage(self.rng.choice(targets), 1)
+                    self._resolve_damage_triggers()
+                    self._cleanup_deaths()
+                    self._check_terminal()
+                    if self.state.terminal:
+                        break
+            elif effect.kind == "random_buff_other_friendly_source_attack":
+                if source_snapshot is None:
+                    raise RuntimeError("source-attack buff requires a death snapshot")
+                candidates = [
+                    minion
+                    for minion in self.state.players[actor].board
+                    if minion.health > 0
+                ]
+                if candidates:
+                    chosen = self.rng.choice(candidates)
+                    self._buff_minion(
+                        TargetRef.minion(actor, chosen.entity_id),
+                        source_snapshot.attack,
+                        0,
+                    )
+            elif effect.kind == "resurrect_highest_cost_friendly":
+                graveyard_candidates = [
+                    card_id
+                    for card_id in self.state.players[actor].graveyard
+                    if card_id in self.cards
+                    and self.cards[card_id].card_type == CardType.MINION
+                ]
+                if graveyard_candidates:
+                    highest_cost = max(
+                        self.cards[card_id].cost for card_id in graveyard_candidates
+                    )
+                    highest_candidates = [
+                        card_id
+                        for card_id in graveyard_candidates
+                        if self.cards[card_id].cost == highest_cost
+                    ]
+                    self._summon(actor, self.rng.choice(highest_candidates))
+            elif effect.kind == "summon_random_rarity":
+                rarity_candidates = [
+                    card.card_id
+                    for card in self.cards.values()
+                    if card.collectible
+                    and card.card_type == CardType.MINION
+                    and card.rarity == effect.keyword
+                ]
+                if rarity_candidates:
+                    for _ in range(self._summon_multiplier(actor)):
+                        summoned = self._summon(
+                            actor, self.rng.choice(rarity_candidates)
+                        )
+                        if summoned is None:
+                            break
+                        summoned_entities.append(
+                            TargetRef.minion(actor, summoned.entity_id)
+                        )
             elif effect.kind == "summon_copy_if_selected_dead":
                 if selected is None or selected.kind != "minion":
                     raise RuntimeError("copy summon requires a selected minion")
@@ -808,6 +876,18 @@ class Game:
             elif effect.kind == "buff_all":
                 for target in self._group_targets(actor, effect.target, played_minion):
                     self._buff_minion(target, effect.attack, effect.health)
+            elif effect.kind == "buff_and_attach_deathrattle":
+                target = self._single_effect_target(
+                    actor, effect.target, selected, played_minion
+                )
+                if target is None or target.kind != "minion":
+                    raise RuntimeError("attached deathrattle requires a minion target")
+                self._buff_minion(target, effect.attack, effect.health)
+                self._grant_minion_keyword(target, "taunt")
+                minion = self._find_minion(target.player, target.entity_id)
+                minion.attached_deathrattle_effects += (
+                    Effect("summon", 1, target="owner", card_id=effect.card_id),
+                )
             elif effect.kind == "grant_keyword_all":
                 for target in self._group_targets(actor, effect.target, played_minion):
                     self._grant_minion_keyword(target, effect.keyword)
@@ -1118,6 +1198,15 @@ class Game:
             player.hero_health -= player.fatigue
             return
         card_id = player.deck.pop()
+        card = self.cards.get(card_id)
+        if card is not None and card.casts_when_drawn:
+            self._resolve_board_triggers("owner_draw", owner=player_index)
+            self._resolve_effect_sequence(player_index, card.effects, None, None)
+            self._cleanup_deaths()
+            self._check_terminal()
+            if not self.state.terminal:
+                self._draw(player_index)
+            return
         self._add_to_hand(player_index, card_id)
         self._resolve_board_triggers("owner_draw", owner=player_index)
 
@@ -1684,7 +1773,9 @@ class Game:
         minion.temporary_attack_expires_turn = None
 
     def _cleanup_deaths(self) -> None:
-        pending_deathrattles: List[Tuple[int, Tuple[Effect, ...], TargetRef]] = []
+        pending_deathrattles: List[
+            Tuple[int, Tuple[Effect, ...], TargetRef, Minion]
+        ] = []
         for player_index, player in enumerate(self.state.players):
             survivors: List[Minion] = []
             for minion in player.board:
@@ -1692,14 +1783,19 @@ class Game:
                     survivors.append(minion)
                     continue
                 card = self.cards.get(minion.card_id)
+                player.graveyard.append(minion.card_id)
                 if card is not None and card.leaves_corpse:
                     player.corpses += 1
-                if card is not None and card.deathrattle_effects:
+                deathrattle_effects = (
+                    card.deathrattle_effects if card is not None else ()
+                ) + minion.attached_deathrattle_effects
+                if deathrattle_effects:
                     pending_deathrattles.append(
                         (
                             player_index,
-                            card.deathrattle_effects,
+                            deathrattle_effects,
                             TargetRef.minion(player_index, minion.entity_id),
+                            minion,
                         )
                     )
                 if minion.reborn:
@@ -1731,8 +1827,14 @@ class Game:
                     )
             player.board = survivors
         self._refresh_dynamic_attack_bonuses()
-        for actor, effects, source in pending_deathrattles:
-            self._resolve_effect_sequence(actor, effects, None, source)
+        for actor, effects, source, source_snapshot in pending_deathrattles:
+            self._resolve_effect_sequence(
+                actor,
+                effects,
+                None,
+                source,
+                source_snapshot=source_snapshot,
+            )
         if any(minion.health <= 0 for player in self.state.players for minion in player.board):
             self._cleanup_deaths()
 
@@ -1799,6 +1901,7 @@ class Game:
             "overload_pending": player.overload_pending,
             "overloaded_mana": player.overloaded_mana,
             "corpses": player.corpses,
+            "graveyard": list(player.graveyard),
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
             "deck_count": len(player.deck),

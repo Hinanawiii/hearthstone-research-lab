@@ -200,6 +200,7 @@ def _review_player(
                 "known_top_card_ids": list(known_deck_top),
             },
             "board": [_review_minion(item) for item in player["board"]],
+            "graveyard": list(player.get("graveyard", [])),
             "secrets": list(player.get("secrets", [])),
             "locations": list(player.get("locations", [])),
             "weapon": _review_weapon(player.get("weapon")),
@@ -248,6 +249,10 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         tags["temporary_attack"] = int(minion["temporary_attack"])
         tags["temporary_attack_expires_turn"] = minion.get(
             "temporary_attack_expires_turn"
+        )
+    if minion.get("attached_deathrattle_effects"):
+        tags["attached_deathrattle_effects"] = list(
+            minion["attached_deathrattle_effects"]
         )
     return {
         "entity_id": int(minion["entity_id"]),
@@ -459,9 +464,10 @@ def _render_state(
             else _cards_text(hand, card_names_zh)
         )
         board_text = _board_text(zones["board"], card_names_zh)
+        graveyard = list(zones.get("graveyard", []))
         lines.append(
             "- {}：英雄 {} 点生命、{} 点护甲{}；法力 {}/{}，临时法力 {}；"
-            "残骸 {}；手牌 {}；牌库 {} 张；武器 {}；场上 {}。".format(
+            "残骸 {}；手牌 {}；牌库 {} 张；墓地 {}；武器 {}；场上 {}。".format(
                 item["role_zh"],
                 hero["health"],
                 hero["armor"],
@@ -472,6 +478,7 @@ def _render_state(
                 resources.get("corpses", 0),
                 hand_text,
                 deck["count"],
+                _render_value_zh(graveyard, card_names_zh),
                 _weapon_text(zones["weapon"], card_names_zh),
                 board_text,
             )

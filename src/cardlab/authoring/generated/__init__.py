@@ -19,6 +19,8 @@ from .core_ds1_185 import CARD as CORE_DS1_185
 from .corpse_batch import CARDS as CORPSE_BATCH_CARDS
 from .corpse_batch import TOKEN_CARDS as CORPSE_BATCH_TOKEN_CARDS
 from .damage_batch import CARDS as DAMAGE_BATCH_CARDS
+from .death_history_batch import CARDS as DEATH_HISTORY_BATCH_CARDS
+from .death_history_batch import TOKEN_CARDS as DEATH_HISTORY_BATCH_TOKEN_CARDS
 from .deathrattle_batch import CARDS as DEATHRATTLE_BATCH_CARDS
 from .deathrattle_batch import TOKEN_CARDS as DEATHRATTLE_BATCH_TOKEN_CARDS
 from .dynamic_zone_batch import CARDS as DYNAMIC_ZONE_BATCH_CARDS
@@ -60,6 +62,7 @@ GENERATED_CARDS.update(SPECIAL_ACTION_BATCH_CARDS)
 GENERATED_CARDS.update(CORPSE_BATCH_CARDS)
 GENERATED_CARDS.update(RANDOM_SUMMON_BATCH_CARDS)
 GENERATED_CARDS.update(ZONE_SUMMON_BATCH_CARDS)
+GENERATED_CARDS.update(DEATH_HISTORY_BATCH_CARDS)
 
 GENERATED_TOKEN_CARDS: Dict[str, CardDef] = dict(SUMMON_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(CHOOSE_ONE_BATCH_TOKEN_CARDS)
@@ -70,6 +73,7 @@ GENERATED_TOKEN_CARDS.update(EVENT_TRIGGER_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(SPECIAL_ACTION_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(CORPSE_BATCH_TOKEN_CARDS)
 GENERATED_TOKEN_CARDS.update(RANDOM_SUMMON_BATCH_TOKEN_CARDS)
+GENERATED_TOKEN_CARDS.update(DEATH_HISTORY_BATCH_TOKEN_CARDS)
 
 
 def _iter_effects(value: object) -> Iterator[Effect]:
@@ -98,8 +102,12 @@ def generated_dependencies(card_id: str) -> Dict[str, CardDef]:
     available = dict(CARDS)
     available.update(GENERATED_TOKEN_CARDS)
     dependencies: Dict[str, CardDef] = {}
-    for dependency_id in referenced_card_ids(card):
+    pending = list(referenced_card_ids(card))
+    while pending:
+        dependency_id = pending.pop(0)
         if dependency_id == card_id:
+            continue
+        if dependency_id in dependencies:
             continue
         try:
             dependencies[dependency_id] = available[dependency_id]
@@ -109,6 +117,7 @@ def generated_dependencies(card_id: str) -> Dict[str, CardDef]:
                     card_id, dependency_id
                 )
             ) from error
+        pending.extend(referenced_card_ids(dependencies[dependency_id]))
     return dependencies
 
 
@@ -140,6 +149,8 @@ __all__ = [
     "DAMAGE_BATCH_CARDS",
     "DEATHRATTLE_BATCH_CARDS",
     "DEATHRATTLE_BATCH_TOKEN_CARDS",
+    "DEATH_HISTORY_BATCH_CARDS",
+    "DEATH_HISTORY_BATCH_TOKEN_CARDS",
     "DYNAMIC_ZONE_BATCH_CARDS",
     "DYNAMIC_ZONE_BATCH_TOKEN_CARDS",
     "EVENT_TRIGGER_BATCH_CARDS",

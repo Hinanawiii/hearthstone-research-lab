@@ -102,6 +102,9 @@ from .damage_batch import (
 from .damage_batch import (
     build_review_scenario as build_damage_batch_scenario,
 )
+from .death_history_batch import AUTHORING_METADATA as DEATH_HISTORY_BATCH_METADATA
+from .death_history_batch import SCENARIO_CARD_NAMES_ZH as DEATH_HISTORY_BATCH_CARD_NAMES
+from .death_history_batch import build_review_scenario as build_death_history_batch_scenario
 from .deathrattle_batch import (
     AUTHORING_METADATA as DEATHRATTLE_BATCH_METADATA,
 )
@@ -345,6 +348,16 @@ for zone_summon_card_id, zone_summon_metadata in ZONE_SUMMON_BATCH_METADATA.item
         build_zone_summon_batch_scenario, zone_summon_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[zone_summon_card_id] = ZONE_SUMMON_BATCH_CARD_NAMES
+
+for death_history_card_id, death_history_metadata in DEATH_HISTORY_BATCH_METADATA.items():
+    CARD_MODULES[death_history_card_id] = (
+        "src/cardlab/authoring/generated/death_history_batch.py"
+    )
+    CARD_METADATA[death_history_card_id] = death_history_metadata
+    SCENARIO_BUILDERS[death_history_card_id] = partial(
+        build_death_history_batch_scenario, death_history_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[death_history_card_id] = DEATH_HISTORY_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

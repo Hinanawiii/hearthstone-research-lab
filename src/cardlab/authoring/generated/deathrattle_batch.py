@@ -205,6 +205,7 @@ CARDS: Dict[str, CardDef] = {
         5,
         5,
         taunt=True,
+        rarity="LEGENDARY",
         deathrattle_effects=(
             Effect("summon", 1, target="owner", card_id="EX1_110t"),
         ),
