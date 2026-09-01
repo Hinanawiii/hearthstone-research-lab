@@ -10,6 +10,7 @@ class CardType(str, Enum):
     SPELL = "spell"
     WEAPON = "weapon"
     LOCATION = "location"
+    HERO = "hero"
 
 
 class TargetMode(str, Enum):
@@ -97,6 +98,7 @@ class CardDef:
     rush: bool = False
     divine_shield: bool = False
     poisonous: bool = False
+    windfury: bool = False
     races: Tuple[str, ...] = ()
     durability: int = 0
     requires_weapon: bool = False
@@ -143,6 +145,12 @@ class CardDef:
     is_combo_card: bool = False
     has_battlecry: bool = False
     secret_kind: str = ""
+    dormant_turns: int = 0
+    uses_board_position: bool = False
+    cleaves_adjacent: bool = False
+    choose_two_keywords: Tuple[str, ...] = ()
+    on_self_or_adjacent_attack_effects: Tuple[Effect, ...] = ()
+    both_decks_turn_time_limit: int = 0
 
 
 @dataclass
@@ -175,7 +183,9 @@ class Minion:
     rush: bool = False
     divine_shield: bool = False
     poisonous: bool = False
+    windfury: bool = False
     races: Tuple[str, ...] = ()
+    dormant_turns_remaining: int = 0
     frozen: bool = False
     temporary_attack: int = 0
     temporary_attack_expires_turn: Optional[int] = None
@@ -188,7 +198,14 @@ class Minion:
 
     def can_attack_ignoring_freeze(self, turn: int) -> bool:
         rested = self.summoned_turn < turn or self.charge or self.rush
-        return self.attack > 0 and self.health > 0 and self.attacks_this_turn == 0 and rested
+        attack_limit = 2 if self.windfury else 1
+        return (
+            self.attack > 0
+            and self.health > 0
+            and self.dormant_turns_remaining == 0
+            and self.attacks_this_turn < attack_limit
+            and rested
+        )
 
     def can_attack(self, turn: int) -> bool:
         return not self.frozen and self.can_attack_ignoring_freeze(turn)
@@ -252,6 +269,8 @@ class PlayerState:
     next_hero_power_cost_increase: int = 0
     minion_types_played_this_turn: List[str] = field(default_factory=list)
     minion_types_played_previous_turn: List[str] = field(default_factory=list)
+    hero_power_kind: str = "damage_1"
+    last_pack_card_ids: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -275,6 +294,7 @@ class Action:
     source_id: Optional[int] = None
     target: Optional[TargetRef] = None
     choice: Optional[int] = None
+    position: Optional[int] = None
 
     @classmethod
     def end_turn(cls) -> "Action":
@@ -287,6 +307,7 @@ class Action:
         }
         data["target"] = asdict(self.target) if self.target else None
         data["choice"] = self.choice
+        data["position"] = self.position
         return data
 
 
@@ -308,6 +329,7 @@ class GameState:
     pending_discover_freeze: bool = False
     pending_discover_special_tags: Tuple[str, ...] = ()
     pending_discover_queue: List[Tuple[str, ...]] = field(default_factory=list)
+    turn_time_limit_seconds: int = 0
 
     @property
     def terminal(self) -> bool:

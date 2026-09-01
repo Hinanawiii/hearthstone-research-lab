@@ -4,6 +4,7 @@ import copy
 import random
 from dataclasses import asdict
 from functools import partial
+from itertools import combinations
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from .cards import CARDS, default_deck
@@ -54,7 +55,17 @@ class Game:
         )
         self.history: List[Dict[str, Any]] = []
         self._validate_decks()
+        self._apply_start_of_game_rules()
         self._setup()
+
+    def _apply_start_of_game_rules(self) -> None:
+        limits = [
+            definition.both_decks_turn_time_limit
+            for definition in self.cards.values()
+            if definition.both_decks_turn_time_limit
+            and all(definition.card_id in player.deck for player in self.state.players)
+        ]
+        self.state.turn_time_limit_seconds = min(limits) if limits else 0
 
     def _validate_decks(self) -> None:
         for deck in (player.deck for player in self.state.players):
@@ -171,6 +182,15 @@ class Game:
                                             choice=choice,
                                         )
                                     )
+                        elif card.choose_two_keywords:
+                            actions.extend(
+                                Action(
+                                    ActionType.PLAY,
+                                    hand_card.entity_id,
+                                    choice=index,
+                                )
+                                for index, _ in enumerate(combinations(card.choose_two_keywords, 2))
+                            )
                         else:
                             target_mode = self._effective_target_mode(actor, card)
                             targets = self._valid_targets(
@@ -181,7 +201,16 @@ class Game:
                             )
                             for target in targets:
                                 actions.append(Action(ActionType.PLAY, hand_card.entity_id, target))
-                            if target_mode == TargetMode.NONE or (
+                            if card.uses_board_position and target_mode == TargetMode.NONE:
+                                actions.extend(
+                                    Action(
+                                        ActionType.PLAY,
+                                        hand_card.entity_id,
+                                        position=position,
+                                    )
+                                    for position in range(len(own.board) + 1)
+                                )
+                            elif target_mode == TargetMode.NONE or (
                                 card.target_optional_if_unavailable and not targets
                             ):
                                 actions.append(Action(ActionType.PLAY, hand_card.entity_id))
@@ -233,15 +262,19 @@ class Game:
 
         hero_power_cost = 2 + own.next_hero_power_cost_increase
         if not own.hero_power_used and own.mana + own.temporary_mana >= hero_power_cost:
-            actions.extend(
-                Action(ActionType.HERO_POWER, target=target)
-                for target in self._valid_targets(
-                    actor,
-                    TargetMode.ANY_CHARACTER,
-                    exclude_elusive=True,
-                    exclude_enemy_stealth=True,
+            if own.hero_power_kind == "summon_infernal":
+                if len(own.board) + len(own.locations) < 7:
+                    actions.append(Action(ActionType.HERO_POWER))
+            else:
+                actions.extend(
+                    Action(ActionType.HERO_POWER, target=target)
+                    for target in self._valid_targets(
+                        actor,
+                        TargetMode.ANY_CHARACTER,
+                        exclude_elusive=True,
+                        exclude_enemy_stealth=True,
+                    )
                 )
-            )
         return actions
 
     def apply(self, action: Action) -> None:
@@ -265,10 +298,13 @@ class Game:
             self._spend_mana(self.state.players[actor], hero_power_cost)
             self.state.players[actor].next_hero_power_cost_increase = 0
             self.state.players[actor].hero_power_used = True
-            self._damage(action.target, 1)
-            self._resolve_damage_triggers()
-            self._cleanup_deaths()
-            self._resolve_board_triggers("owner_hero_power", owner=actor)
+            if self.state.players[actor].hero_power_kind == "summon_infernal":
+                self._summon(actor, "EX1_tk34")
+            else:
+                self._damage(action.target, 1)
+                self._resolve_damage_triggers()
+                self._cleanup_deaths()
+                self._resolve_board_triggers("owner_hero_power", owner=actor)
             self._cleanup_deaths()
             self._check_terminal()
         elif action.action_type == ActionType.DISCOVER:
@@ -318,10 +354,13 @@ class Game:
                 rush=card.rush,
                 divine_shield=card.divine_shield,
                 poisonous=card.poisonous,
+                windfury=card.windfury,
                 races=card.races,
+                dormant_turns_remaining=card.dormant_turns,
                 summoned_turn=self.state.turn,
             )
-            player.board.append(minion)
+            position = len(player.board) if action.position is None else action.position
+            player.board.insert(position, minion)
             played_minion = TargetRef.minion(actor, minion.entity_id)
             self._refresh_dynamic_attack_bonuses()
         elif not countered and card.card_type == CardType.WEAPON:
@@ -340,16 +379,22 @@ class Game:
             player.overload_pending += card.overload
             if not card.secret_kind:
                 self._resolve_effects(actor, card, action.target, played_minion)
+        if not countered and card.choose_two_keywords:
+            keyword_choices = list(combinations(card.choose_two_keywords, 2))
+            if action.choice is None or not 0 <= action.choice < len(keyword_choices):
+                raise IllegalAction("two-keyword card requires a valid choice")
+            for keyword in keyword_choices[action.choice]:
+                self._grant_minion_keyword(played_minion, keyword)
         spell_damage_bonus = self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
         if not countered and card.choose_one_effects:
             if action.choice is None:
                 raise IllegalAction("choose-one card requires a choice")
-            choices = (
+            effect_choices = (
                 card.choose_one_effects
                 if action.choice == -1
                 else (card.choose_one_effects[action.choice],)
             )
-            for choice_effects in choices:
+            for choice_effects in effect_choices:
                 self._resolve_effect_sequence(
                     actor,
                     choice_effects,
@@ -1619,8 +1664,99 @@ class Game:
                 self.state.players[selected.player].locations.remove(location)
             elif effect.kind == "silence":
                 self._silence_minion(selected)
+            elif effect.kind == "grant_taunt_adjacent_to_played":
+                if played_minion is None or played_minion.entity_id is None:
+                    continue
+                board = self.state.players[actor].board
+                source_index = next(
+                    index
+                    for index, minion in enumerate(board)
+                    if minion.entity_id == played_minion.entity_id
+                )
+                for index in (source_index - 1, source_index + 1):
+                    if 0 <= index < len(board):
+                        board[index].taunt = True
+            elif effect.kind == "fight_until_death":
+                if played_minion is None or selected is None:
+                    raise RuntimeError("fight requires source and target minions")
+                while self._attack_source_exists(played_minion) and self._attack_source_exists(
+                    selected
+                ):
+                    source = self._find_minion(actor, played_minion.entity_id)
+                    defender = self._find_minion(selected.player, selected.entity_id)
+                    if source.attack <= 0 and defender.attack <= 0:
+                        break
+                    self._attack(
+                        actor,
+                        Action(ActionType.ATTACK, source.entity_id, selected),
+                    )
+            elif effect.kind == "play_pack_cards":
+                pack_candidate_ids: List[str] = [
+                    card_id for card_id in effect.card_ids if card_id in self.cards
+                ]
+                chosen_pack_ids = self.rng.sample(
+                    pack_candidate_ids, min(5, len(pack_candidate_ids))
+                )
+                self.state.players[actor].last_pack_card_ids = list(chosen_pack_ids)
+                for card_id in chosen_pack_ids:
+                    self._auto_play_card(actor, card_id)
+            elif effect.kind == "set_hero_power_summon":
+                self.state.players[actor].hero_power_kind = "summon_infernal"
             else:
                 raise RuntimeError("unsupported effect: {}".format(effect.kind))
+
+    def _auto_play_card(self, actor: int, card_id: str) -> None:
+        card = self.cards[card_id]
+        targets = self._valid_targets(
+            actor,
+            self._effective_target_mode(actor, card),
+            exclude_elusive=card.card_type == CardType.SPELL,
+            exclude_enemy_stealth=True,
+        )
+        selected = self.rng.choice(targets) if targets else None
+        if card.target_mode != TargetMode.NONE and selected is None:
+            return
+        countered = card.card_type == CardType.SPELL and self._counter_spell_secret(actor)
+        played_minion: Optional[TargetRef] = None
+        if not countered and card.card_type == CardType.MINION:
+            summoned = self._summon(actor, card_id)
+            if summoned is None:
+                return
+            played_minion = TargetRef.minion(actor, summoned.entity_id)
+        elif not countered and card.card_type == CardType.WEAPON:
+            self._equip_weapon(actor, card_id)
+        elif not countered and card.card_type == CardType.HERO:
+            pass
+        elif not countered and card.secret_kind:
+            if card_id not in self.state.players[actor].secrets:
+                self.state.players[actor].secrets.append(card_id)
+        if not countered and not card.secret_kind:
+            self._resolve_effects(actor, card, selected, played_minion)
+        self.state.players[actor].cards_played_this_turn += 1
+        self._cleanup_deaths()
+        if not countered:
+            self._after_card_played_secrets(actor, card, played_minion)
+        if card.card_type == CardType.SPELL:
+            self._resolve_board_triggers(
+                "owner_spell_cast",
+                owner=actor,
+                played_spell_school=card.spell_school,
+            )
+            self._resolve_board_triggers(
+                "any_spell_cast",
+                triggering_player=actor,
+                triggering_card_id=card.card_id,
+            )
+            self._after_spell_secrets(actor)
+            self.state.players[actor].spells_played_this_turn.append(card_id)
+        elif card.card_type == CardType.MINION and played_minion is not None:
+            self._resolve_board_triggers(
+                "friendly_play",
+                owner=actor,
+                exclude_entity=played_minion.entity_id,
+                played_races=card.races,
+            )
+        self._cleanup_deaths()
 
     @staticmethod
     def _single_effect_target(
@@ -1652,33 +1788,33 @@ class Game:
             return [
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
             ]
         if target == "friendly_minions":
             return [
                 TargetRef.minion(actor, minion.entity_id)
                 for minion in self.state.players[actor].board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
             ]
         if target == "friendly_characters":
             return [TargetRef.hero(actor)] + [
                 TargetRef.minion(actor, minion.entity_id)
                 for minion in self.state.players[actor].board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
             ]
         if target == "all_minions":
             return [
                 TargetRef.minion(player_index, minion.entity_id)
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
             ]
         if target == "all_characters":
             return [TargetRef.hero(0), TargetRef.hero(1)] + [
                 TargetRef.minion(player_index, minion.entity_id)
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
             ]
         if target == "all_other_minions":
             return [
@@ -1686,6 +1822,7 @@ class Game:
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and (
                     played_minion is None
                     or player_index != played_minion.player
@@ -1699,20 +1836,23 @@ class Game:
         ignores_taunt = any(
             definition is not None and definition.ignores_taunt_for_friendly_attacks
             for minion in self.state.players[actor].board
-            if minion.health > 0
+            if minion.health > 0 and minion.dormant_turns_remaining == 0
             for definition in (self.cards.get(minion.card_id),)
         )
         taunts = [
             minion
             for minion in self.state.players[enemy].board
-            if minion.taunt and not minion.stealth and minion.health > 0
+            if minion.taunt
+            and not minion.stealth
+            and minion.health > 0
+            and minion.dormant_turns_remaining == 0
         ]
         if taunts and not ignores_taunt:
             return [TargetRef.minion(enemy, minion.entity_id) for minion in taunts]
         return [TargetRef.hero(enemy)] + [
             TargetRef.minion(enemy, minion.entity_id)
             for minion in self.state.players[enemy].board
-            if minion.health > 0 and not minion.stealth
+            if minion.health > 0 and minion.dormant_turns_remaining == 0 and not minion.stealth
         ]
 
     def _randomize_action_target(self, actor: int, action: Action) -> Action:
@@ -1764,6 +1904,7 @@ class Game:
             action.source_id,
             self.rng.choice(candidates),
             action.choice,
+            action.position,
         )
 
     def _attack(self, actor: int, action: Action) -> None:
@@ -1778,6 +1919,28 @@ class Game:
         ):
             return
         attacker = self._find_minion(actor, action.source_id)
+        adjacent_listener_ids = self._self_or_adjacent_attack_listener_ids(
+            actor, attacker.entity_id
+        )
+        cleave_targets: List[TargetRef] = []
+        attacker_definition = self.cards.get(attacker.card_id)
+        if (
+            target.kind == "minion"
+            and attacker_definition is not None
+            and attacker_definition.cleaves_adjacent
+        ):
+            defender_board = self.state.players[target.player].board
+            defender_index = next(
+                index
+                for index, minion in enumerate(defender_board)
+                if minion.entity_id == target.entity_id
+            )
+            cleave_targets = [
+                TargetRef.minion(target.player, defender_board[index].entity_id)
+                for index in (defender_index - 1, defender_index + 1)
+                if 0 <= index < len(defender_board)
+                and defender_board[index].dormant_turns_remaining == 0
+            ]
         self._resolve_board_triggers("attacks", owner=actor, only_entity=attacker.entity_id)
         attacker.attacks_this_turn += 1
         attacker.stealth = False
@@ -1795,6 +1958,10 @@ class Game:
                 defender.health = 0
             if defender.poisonous and defender_damage_dealt > 0:
                 attacker.health = 0
+            for cleave_target in cleave_targets:
+                cleave_damage = self._damage(cleave_target, attacker.attack)
+                if attacker.poisonous and cleave_damage > 0:
+                    self._find_minion(cleave_target.player, cleave_target.entity_id).health = 0
             killed_defender = defender.health <= 0
             if defender.lifesteal and defender_damage_dealt > 0:
                 defender_owner = self.state.players[target.player]
@@ -1832,7 +1999,50 @@ class Game:
                 only_entity=attacker.entity_id,
             )
         self._cleanup_deaths()
+        self._resolve_self_or_adjacent_attack_triggers(actor, adjacent_listener_ids)
+        self._cleanup_deaths()
         self._check_terminal()
+
+    def _self_or_adjacent_attack_listener_ids(
+        self, actor: int, attacker_entity_id: int
+    ) -> List[int]:
+        board = self.state.players[actor].board
+        attacker_index = next(
+            index for index, minion in enumerate(board) if minion.entity_id == attacker_entity_id
+        )
+        return [
+            minion.entity_id
+            for index, minion in enumerate(board)
+            if abs(index - attacker_index) <= 1
+            and minion.health > 0
+            and minion.dormant_turns_remaining == 0
+            and (definition := self.cards.get(minion.card_id)) is not None
+            and definition.on_self_or_adjacent_attack_effects
+        ]
+
+    def _resolve_self_or_adjacent_attack_triggers(
+        self, actor: int, listener_ids: List[int]
+    ) -> None:
+        for entity_id in listener_ids:
+            listener = next(
+                (
+                    minion
+                    for minion in self.state.players[actor].board
+                    if minion.entity_id == entity_id
+                    and minion.health > 0
+                    and minion.dormant_turns_remaining == 0
+                ),
+                None,
+            )
+            if listener is None:
+                continue
+            definition = self.cards[listener.card_id]
+            self._resolve_effect_sequence(
+                actor,
+                definition.on_self_or_adjacent_attack_effects,
+                None,
+                TargetRef.minion(actor, entity_id),
+            )
 
     def _hero_attack(self, actor: int, action: Action) -> None:
         player = self.state.players[actor]
@@ -1930,6 +2140,10 @@ class Game:
         player.cards_played_this_turn = 0
         for minion in player.board:
             minion.attacks_this_turn = 0
+            if minion.dormant_turns_remaining > 0:
+                minion.dormant_turns_remaining -= 1
+                if minion.dormant_turns_remaining == 0:
+                    minion.summoned_turn = self.state.turn
         for location in player.locations:
             location.cooldown = max(0, location.cooldown - 1)
         self._refresh_dynamic_attack_bonuses()
@@ -2101,7 +2315,7 @@ class Game:
         return any(
             definition is not None and definition.choose_both_for_friendly
             for minion in self.state.players[actor].board
-            if minion.health > 0
+            if minion.health > 0 and minion.dormant_turns_remaining == 0
             for definition in (self.cards.get(minion.card_id),)
         )
 
@@ -2119,19 +2333,21 @@ class Game:
             return [
                 TargetRef.minion(actor, m.entity_id)
                 for m in self.state.players[actor].board
-                if not exclude_elusive or not m.elusive
+                if m.dormant_turns_remaining == 0 and (not exclude_elusive or not m.elusive)
             ]
         if mode == TargetMode.FRIENDLY_CHARACTER:
             return [TargetRef.hero(actor)] + [
                 TargetRef.minion(actor, m.entity_id)
                 for m in self.state.players[actor].board
-                if not exclude_elusive or not m.elusive
+                if m.dormant_turns_remaining == 0 and (not exclude_elusive or not m.elusive)
             ]
         if mode == TargetMode.FRIENDLY_UNDEAD:
             return [
                 TargetRef.minion(actor, m.entity_id)
                 for m in self.state.players[actor].board
-                if "UNDEAD" in m.races and (not exclude_elusive or not m.elusive)
+                if m.dormant_turns_remaining == 0
+                and "UNDEAD" in m.races
+                and (not exclude_elusive or not m.elusive)
             ]
         if mode == TargetMode.ENEMY_MINION:
             enemy = 1 - actor
@@ -2139,6 +2355,7 @@ class Game:
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
             ]
@@ -2155,6 +2372,7 @@ class Game:
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and minion.taunt
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
@@ -2165,6 +2383,7 @@ class Game:
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and minion.attack >= 7
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or player_index == actor or not minion.stealth)
@@ -2175,6 +2394,7 @@ class Game:
                 TargetRef.minion(enemy, minion.entity_id)
                 for minion in self.state.players[enemy].board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and minion.health < minion.max_health
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or not minion.stealth)
@@ -2185,6 +2405,7 @@ class Game:
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and minion.health == minion.max_health
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or player_index == actor or not minion.stealth)
@@ -2195,6 +2416,7 @@ class Game:
                 for player_index, player in enumerate(self.state.players)
                 for minion in player.board
                 if minion.health > 0
+                and minion.dormant_turns_remaining == 0
                 and (not exclude_elusive or not minion.elusive)
                 and (not exclude_enemy_stealth or player_index == actor or not minion.stealth)
             ]
@@ -2210,7 +2432,8 @@ class Game:
                 targets.extend(
                     TargetRef.minion(player_index, m.entity_id)
                     for m in player.board
-                    if (not exclude_elusive or not m.elusive)
+                    if m.dormant_turns_remaining == 0
+                    and (not exclude_elusive or not m.elusive)
                     and (not exclude_enemy_stealth or player_index == actor or not m.stealth)
                 )
             return targets
@@ -2241,6 +2464,7 @@ class Game:
             TargetRef.minion(enemy, minion.entity_id)
             for minion in self.state.players[enemy].board
             if minion.health > 0
+            and minion.dormant_turns_remaining == 0
             and (not exclude_elusive or not minion.elusive)
             and (not exclude_stealth or not minion.stealth)
         ]
@@ -2253,7 +2477,7 @@ class Game:
             if amount > 0 and any(
                 definition is not None and definition.grants_hero_immunity
                 for minion in player.board
-                if minion.health > 0
+                if minion.health > 0 and minion.dormant_turns_remaining == 0
                 for definition in (self.cards.get(minion.card_id),)
             ):
                 return 0
@@ -2276,6 +2500,8 @@ class Game:
             return amount
         elif target.kind == "minion":
             minion = self._find_minion(target.player, target.entity_id)
+            if minion.dormant_turns_remaining > 0:
+                return 0
             if amount > 0 and minion.divine_shield:
                 minion.divine_shield = False
                 self._resolve_board_triggers(
@@ -2347,7 +2573,7 @@ class Game:
             if owner is not None and player_index != owner:
                 continue
             for minion in player.board:
-                if minion.health <= 0:
+                if minion.health <= 0 or minion.dormant_turns_remaining > 0:
                     continue
                 if exclude_entity is not None and minion.entity_id == exclude_entity:
                     continue
@@ -2405,10 +2631,21 @@ class Game:
                     player.weapon.attack = player.hero_armor
                     player.hero_attack = player.hero_armor + player.hero_temporary_attack
             for recipient_index, minion in enumerate(player.board):
+                if minion.dormant_turns_remaining > 0:
+                    minion.attack -= minion.active_aura_attack_bonus
+                    minion.health -= minion.active_aura_health_bonus
+                    minion.max_health -= minion.active_aura_health_bonus
+                    minion.active_aura_attack_bonus = 0
+                    minion.active_aura_health_bonus = 0
+                    continue
                 desired_aura_attack = 0
                 desired_aura_health = 0
                 for source_index, source in enumerate(player.board):
-                    if source.entity_id == minion.entity_id or source.health <= 0:
+                    if (
+                        source.entity_id == minion.entity_id
+                        or source.health <= 0
+                        or source.dormant_turns_remaining > 0
+                    ):
                         continue
                     source_definition = self.cards.get(source.card_id)
                     if source_definition is None:
@@ -2485,7 +2722,15 @@ class Game:
     def _grant_minion_keyword(self, target: Optional[TargetRef], keyword: str) -> None:
         if target is None or target.kind != "minion":
             raise IllegalAction("keyword effect requires a minion target")
-        if keyword not in {"taunt", "elusive", "divine_shield", "poisonous", "reborn"}:
+        if keyword not in {
+            "taunt",
+            "elusive",
+            "divine_shield",
+            "poisonous",
+            "reborn",
+            "rush",
+            "windfury",
+        }:
             raise RuntimeError("unsupported granted keyword: {}".format(keyword))
         minion = self._find_minion(target.player, target.entity_id)
         setattr(minion, keyword, True)
@@ -2521,7 +2766,9 @@ class Game:
         minion.rush = card.rush
         minion.divine_shield = card.divine_shield
         minion.poisonous = card.poisonous
+        minion.windfury = card.windfury
         minion.races = card.races
+        minion.dormant_turns_remaining = card.dormant_turns
         minion.frozen = False
         minion.temporary_attack = 0
         minion.temporary_attack_expires_turn = None
@@ -2550,6 +2797,7 @@ class Game:
         minion.rush = False
         minion.divine_shield = False
         minion.poisonous = False
+        minion.windfury = False
         minion.frozen = False
         minion.temporary_attack = 0
         minion.temporary_attack_expires_turn = None
@@ -2635,7 +2883,9 @@ class Game:
             rush=card.rush,
             divine_shield=card.divine_shield,
             poisonous=card.poisonous,
+            windfury=card.windfury,
             races=card.races,
+            dormant_turns_remaining=card.dormant_turns,
             summoned_turn=self.state.turn,
         )
         player.board.append(minion)
@@ -2846,7 +3096,9 @@ class Game:
                             rush=card.rush,
                             divine_shield=card.divine_shield,
                             poisonous=card.poisonous,
+                            windfury=card.windfury,
                             races=card.races,
+                            dormant_turns_remaining=card.dormant_turns,
                             summoned_turn=self.state.turn,
                         )
                     )
@@ -2913,6 +3165,7 @@ class Game:
             "enemy": self._player_public(enemy, include_hand=False),
             "terminal": self.state.terminal,
             "winner": self.state.winner,
+            "turn_time_limit_seconds": self.state.turn_time_limit_seconds,
             "pending_discover": {
                 "player": self.state.pending_discover_player,
                 "options": list(self.state.pending_discover_options)
@@ -2930,6 +3183,7 @@ class Game:
             "terminal": self.state.terminal,
             "winner": self.state.winner,
             "terminal_reason": self.state.terminal_reason,
+            "turn_time_limit_seconds": self.state.turn_time_limit_seconds,
             "pending_discover_player": self.state.pending_discover_player,
             "pending_discover_option_count": len(self.state.pending_discover_options),
         }
@@ -2953,6 +3207,8 @@ class Game:
             "spells_played_previous_turn": list(player.spells_played_previous_turn),
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
+            "hero_power_kind": player.hero_power_kind,
+            "last_pack_card_ids": list(player.last_pack_card_ids),
             "deck_count": len(player.deck),
             "hand_count": len(player.hand),
             "board": [asdict(minion) for minion in player.board],

@@ -170,6 +170,8 @@ def _review_player(
     hero_tags = list(player.get("hero_tags", []))
     if player.get("hero_frozen"):
         hero_tags.append("冻结")
+    if player.get("hero_power_kind", "damage_1") != "damage_1":
+        hero_tags.append("英雄技能：{}".format(player["hero_power_kind"]))
     return {
         "player_id": player_id,
         "role_zh": role_zh,
@@ -192,12 +194,9 @@ def _review_player(
             "friendly_undead_died_since_last_turn": bool(
                 player.get("friendly_undead_died_since_last_turn", False)
             ),
-            "spells_played_this_turn": list(
-                player.get("spells_played_this_turn", [])
-            ),
-            "spells_played_previous_turn": list(
-                player.get("spells_played_previous_turn", [])
-            ),
+            "spells_played_this_turn": list(player.get("spells_played_this_turn", [])),
+            "spells_played_previous_turn": list(player.get("spells_played_previous_turn", [])),
+            "last_pack_card_ids": list(player.get("last_pack_card_ids", [])),
         },
         "zones": {
             "hand": {
@@ -255,6 +254,7 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         ("rush", "突袭"),
         ("divine_shield", "圣盾"),
         ("poisonous", "剧毒"),
+        ("windfury", "风怒"),
         ("frozen", "冻结"),
     ):
         if minion.get(field):
@@ -264,13 +264,11 @@ def _review_minion(minion: Mapping[str, Any]) -> Dict[str, Any]:
         tags["races"] = list(minion["races"])
     if minion.get("temporary_attack"):
         tags["temporary_attack"] = int(minion["temporary_attack"])
-        tags["temporary_attack_expires_turn"] = minion.get(
-            "temporary_attack_expires_turn"
-        )
+        tags["temporary_attack_expires_turn"] = minion.get("temporary_attack_expires_turn")
     if minion.get("attached_deathrattle_effects"):
-        tags["attached_deathrattle_effects"] = list(
-            minion["attached_deathrattle_effects"]
-        )
+        tags["attached_deathrattle_effects"] = list(minion["attached_deathrattle_effects"])
+    if minion.get("dormant_turns_remaining"):
+        tags["dormant_turns_remaining"] = int(minion["dormant_turns_remaining"])
     return {
         "entity_id": int(minion["entity_id"]),
         "card_id": str(minion["card_id"]),
@@ -302,9 +300,7 @@ def validate_review_document(document: Mapping[str, Any]) -> None:
         {"card_module", "generator", "definition"},
         "implementation",
     )
-    dependencies = _mapping(document["implementation"], "implementation").get(
-        "dependencies", []
-    )
+    dependencies = _mapping(document["implementation"], "implementation").get("dependencies", [])
     if not isinstance(dependencies, list):
         raise ValueError("implementation dependencies must be a list")
     for dependency in dependencies:
@@ -419,9 +415,7 @@ def render_review_document_zh(
         "核验目的：{}".format(scenario["purpose_zh"]),
         "执行动作：{}".format(_mapping(scenario["action"], "action")["description_zh"]),
     ]
-    dependencies = _mapping(document["implementation"], "implementation").get(
-        "dependencies", []
-    )
+    dependencies = _mapping(document["implementation"], "implementation").get("dependencies", [])
     if dependencies:
         lines.extend(["", "随母卡实现的衍生牌"])
         for dependency in dependencies:
@@ -453,21 +447,13 @@ def render_review_document_zh(
             item = _mapping(special_case, "special_case")
             lines.append("- {}".format(_replace_card_ids(str(item["summary_zh"]), names)))
             lines.append(
-                "  明细：{}".format(
-                    _render_details_zh(str(item["kind"]), item["details"], names)
-                )
+                "  明细：{}".format(_render_details_zh(str(item["kind"]), item["details"], names))
             )
     return "\n".join(lines) + "\n"
 
 
-def _render_state(
-    state: Mapping[str, Any], card_names_zh: Mapping[str, str]
-) -> Sequence[str]:
-    lines = [
-        "- 回合 {}，当前行动玩家为玩家 {}。".format(
-            state["turn"], state["active_player_id"]
-        )
-    ]
+def _render_state(state: Mapping[str, Any], card_names_zh: Mapping[str, str]) -> Sequence[str]:
+    lines = ["- 回合 {}，当前行动玩家为玩家 {}。".format(state["turn"], state["active_player_id"])]
     for player in state["players"]:
         item = _mapping(player, "player")
         hero = _mapping(item["hero"], "hero")
@@ -559,18 +545,14 @@ def _board_text(board: Any, card_names_zh: Mapping[str, str]) -> str:
         }
         if races:
             annotations.append(
-                "种族：{}".format(
-                    "/".join(race_labels.get(str(race), str(race)) for race in races)
-                )
+                "种族：{}".format("/".join(race_labels.get(str(race), str(race)) for race in races))
             )
         rendered.append(
             "{} {}/{}{}".format(
                 _card_reference(str(item["card_id"]), card_names_zh),
                 item["attack"],
                 item["health"],
-                " [{}]".format("、".join(annotations))
-                if annotations
-                else "",
+                " [{}]".format("、".join(annotations)) if annotations else "",
             )
         )
     return "、".join(rendered)
@@ -596,11 +578,7 @@ def _render_value_zh(value: Any, card_names_zh: Mapping[str, str]) -> str:
     if value is None:
         return "无"
     if isinstance(value, list):
-        return (
-            "、".join(_render_value_zh(item, card_names_zh) for item in value)
-            if value
-            else "无"
-        )
+        return "、".join(_render_value_zh(item, card_names_zh) for item in value) if value else "无"
     if isinstance(value, dict):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     return _replace_card_ids(str(value), card_names_zh)

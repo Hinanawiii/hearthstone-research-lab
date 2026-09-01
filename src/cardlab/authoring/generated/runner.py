@@ -47,6 +47,15 @@ from .composite_spell_batch import (
 from .composite_spell_batch import (
     build_review_scenario as build_composite_spell_batch_scenario,
 )
+from .composite_unique_batch import (
+    AUTHORING_METADATA as COMPOSITE_UNIQUE_BATCH_METADATA,
+)
+from .composite_unique_batch import (
+    SCENARIO_CARD_NAMES_ZH as COMPOSITE_UNIQUE_BATCH_CARD_NAMES,
+)
+from .composite_unique_batch import (
+    build_review_scenario as build_composite_unique_batch_scenario,
+)
 from .conditional_state_batch import AUTHORING_METADATA as CONDITIONAL_STATE_BATCH_METADATA
 from .conditional_state_batch import (
     SCENARIO_CARD_NAMES_ZH as CONDITIONAL_STATE_BATCH_CARD_NAMES,
@@ -361,6 +370,16 @@ for composite_card_id, composite_metadata in COMPOSITE_SPELL_BATCH_METADATA.item
         build_composite_spell_batch_scenario, composite_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[composite_card_id] = COMPOSITE_SPELL_BATCH_CARD_NAMES
+
+for composite_unique_card_id, composite_unique_metadata in COMPOSITE_UNIQUE_BATCH_METADATA.items():
+    CARD_MODULES[composite_unique_card_id] = (
+        "src/cardlab/authoring/generated/composite_unique_batch.py"
+    )
+    CARD_METADATA[composite_unique_card_id] = composite_unique_metadata
+    SCENARIO_BUILDERS[composite_unique_card_id] = partial(
+        build_composite_unique_batch_scenario, composite_unique_card_id
+    )
+    SCENARIO_CARD_NAME_CATALOGS[composite_unique_card_id] = COMPOSITE_UNIQUE_BATCH_CARD_NAMES
 
 for choose_card_id, choose_metadata in CHOOSE_ONE_BATCH_METADATA.items():
     CARD_MODULES[choose_card_id] = "src/cardlab/authoring/generated/choose_one_batch.py"
