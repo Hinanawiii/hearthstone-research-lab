@@ -142,6 +142,7 @@ class CardDef:
     is_outcast_card: bool = False
     is_combo_card: bool = False
     has_battlecry: bool = False
+    secret_kind: str = ""
 
 
 @dataclass
@@ -231,6 +232,7 @@ class PlayerState:
     board: List[Minion] = field(default_factory=list)
     weapon: Optional[Weapon] = None
     locations: List[Location] = field(default_factory=list)
+    secrets: List[str] = field(default_factory=list)
     overload_pending: int = 0
     overloaded_mana: int = 0
     cards_played_this_turn: int = 0

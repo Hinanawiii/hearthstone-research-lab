@@ -188,6 +188,9 @@ from .rune_location_batch import (
 from .rune_location_batch import (
     build_review_scenario as build_rune_location_batch_scenario,
 )
+from .secret_batch import AUTHORING_METADATA as SECRET_BATCH_METADATA
+from .secret_batch import SCENARIO_CARD_NAMES_ZH as SECRET_BATCH_CARD_NAMES
+from .secret_batch import build_review_scenario as build_secret_batch_scenario
 from .special_action_batch import AUTHORING_METADATA as SPECIAL_ACTION_BATCH_METADATA
 from .special_action_batch import (
     SCENARIO_CARD_NAMES_ZH as SPECIAL_ACTION_BATCH_CARD_NAMES,
@@ -462,6 +465,12 @@ for rune_location_card_id, rune_location_metadata in RUNE_LOCATION_BATCH_METADAT
         build_rune_location_batch_scenario, rune_location_card_id
     )
     SCENARIO_CARD_NAME_CATALOGS[rune_location_card_id] = RUNE_LOCATION_BATCH_CARD_NAMES
+
+for secret_card_id, secret_metadata in SECRET_BATCH_METADATA.items():
+    CARD_MODULES[secret_card_id] = "src/cardlab/authoring/generated/secret_batch.py"
+    CARD_METADATA[secret_card_id] = secret_metadata
+    SCENARIO_BUILDERS[secret_card_id] = partial(build_secret_batch_scenario, secret_card_id)
+    SCENARIO_CARD_NAME_CATALOGS[secret_card_id] = SECRET_BATCH_CARD_NAMES
 
 
 def build_review_artifact(store: ReviewStore, card_id: str) -> Dict[str, Any]:

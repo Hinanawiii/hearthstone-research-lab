@@ -95,6 +95,8 @@ class Game:
 
         for hand_card in own.hand:
             card = self.cards[hand_card.card_id]
+            if card.secret_kind and (card.card_id in own.secrets or len(own.secrets) >= 5):
+                continue
             effective_cost = self._effective_card_cost(actor, hand_card, card)
             uses_health = card.pays_health_if_healed and own.healed_this_turn
             can_pay = (
@@ -298,8 +300,9 @@ class Game:
             self._spend_mana(player, effective_cost)
         player.hand.remove(hand_card)
         self._consume_cost_modifiers(player, card)
+        countered = card.card_type == CardType.SPELL and self._counter_spell_secret(actor)
         played_minion: Optional[TargetRef] = None
-        if card.card_type == CardType.MINION:
+        if not countered and card.card_type == CardType.MINION:
             minion = Minion(
                 entity_id=self._entity_id(),
                 card_id=card.card_id,
@@ -321,9 +324,9 @@ class Game:
             player.board.append(minion)
             played_minion = TargetRef.minion(actor, minion.entity_id)
             self._refresh_dynamic_attack_bonuses()
-        elif card.card_type == CardType.WEAPON:
+        elif not countered and card.card_type == CardType.WEAPON:
             self._equip_weapon(actor, card.card_id)
-        elif card.card_type == CardType.LOCATION:
+        elif not countered and card.card_type == CardType.LOCATION:
             player.locations.append(
                 Location(
                     entity_id=self._entity_id(),
@@ -331,10 +334,14 @@ class Game:
                     durability=card.durability,
                 )
             )
-        player.overload_pending += card.overload
-        self._resolve_effects(actor, card, action.target, played_minion)
+        elif not countered and card.secret_kind:
+            player.secrets.append(card.card_id)
+        if not countered:
+            player.overload_pending += card.overload
+            if not card.secret_kind:
+                self._resolve_effects(actor, card, action.target, played_minion)
         spell_damage_bonus = self._spell_damage(actor) if card.card_type == CardType.SPELL else 0
-        if card.choose_one_effects:
+        if not countered and card.choose_one_effects:
             if action.choice is None:
                 raise IllegalAction("choose-one card requires a choice")
             choices = (
@@ -350,7 +357,7 @@ class Game:
                     played_minion,
                     spell_damage_bonus=spell_damage_bonus,
                 )
-        if was_outcast and card.outcast_effects:
+        if not countered and was_outcast and card.outcast_effects:
             self._resolve_effect_sequence(
                 actor,
                 card.outcast_effects,
@@ -358,7 +365,7 @@ class Game:
                 played_minion,
                 spell_damage_bonus=spell_damage_bonus,
             )
-        if combo_active and card.combo_effects:
+        if not countered and combo_active and card.combo_effects:
             self._resolve_effect_sequence(
                 actor,
                 card.combo_effects,
@@ -368,6 +375,8 @@ class Game:
             )
         player.cards_played_this_turn += 1
         self._cleanup_deaths()
+        if not countered:
+            self._after_card_played_secrets(actor, card, played_minion)
         if card.card_type == CardType.SPELL:
             self._resolve_board_triggers(
                 "owner_spell_cast",
@@ -380,6 +389,7 @@ class Game:
                 triggering_card_id=card.card_id,
             )
             self._transform_dynamic_hand_cards(actor, card.card_id)
+            self._after_spell_secrets(actor)
         elif card.card_type == CardType.MINION:
             player.minion_types_played_this_turn.extend(
                 race for race in card.races if race not in player.minion_types_played_this_turn
@@ -415,6 +425,114 @@ class Game:
         player.deck.insert(insertion_index, hand_card.card_id)
         player.deck_outside_starting.insert(insertion_index, hand_card.outside_starting_deck)
         self._check_terminal()
+
+    def _counter_spell_secret(self, actor: int) -> bool:
+        owner = 1 - actor
+        secret = self._first_secret(owner, "counterspell")
+        if secret is None:
+            return False
+        self.state.players[owner].secrets.remove(secret)
+        return True
+
+    def _after_spell_secrets(self, actor: int) -> None:
+        owner = 1 - actor
+        secret = self._first_secret(owner, "pressure_plate")
+        if secret is None:
+            return
+        candidates = [minion for minion in self.state.players[actor].board if minion.health > 0]
+        if not candidates:
+            return
+        self.state.players[owner].secrets.remove(secret)
+        self.rng.choice(candidates).health = 0
+        self._cleanup_deaths()
+
+    def _after_card_played_secrets(
+        self,
+        actor: int,
+        card: CardDef,
+        played_minion: Optional[TargetRef],
+    ) -> None:
+        owner = 1 - actor
+        rat_trap = self._first_secret(owner, "rat_trap")
+        if rat_trap is not None and self.state.players[actor].cards_played_this_turn == 3:
+            self.state.players[owner].secrets.remove(rat_trap)
+            self._summon(owner, "GIL_577t")
+
+        explosive_runes = self._first_secret(owner, "explosive_runes")
+        if explosive_runes is None or card.card_type != CardType.MINION or played_minion is None:
+            return
+        try:
+            minion = self._find_minion(actor, played_minion.entity_id)
+        except IllegalAction:
+            return
+        self.state.players[owner].secrets.remove(explosive_runes)
+        health_before = minion.health
+        damage_dealt = self._damage(played_minion, 6 + self._spell_damage(owner))
+        if damage_dealt > 0:
+            excess = max(0, 6 + self._spell_damage(owner) - health_before)
+            if excess:
+                self._damage(TargetRef.hero(actor), excess)
+        self._resolve_damage_triggers()
+        self._cleanup_deaths()
+        self._check_terminal()
+
+    def _before_attack_secrets(
+        self,
+        actor: int,
+        attack_source: TargetRef,
+        target: TargetRef,
+    ) -> bool:
+        owner = 1 - actor
+        for secret_id in list(self.state.players[owner].secrets):
+            definition = self.cards.get(secret_id)
+            if definition is None:
+                continue
+            kind = definition.secret_kind
+            if kind == "freezing_trap" and attack_source.kind == "minion":
+                self.state.players[owner].secrets.remove(secret_id)
+                attacker = self._find_minion(actor, attack_source.entity_id)
+                self.state.players[actor].board.remove(attacker)
+                if len(self.state.players[actor].hand) < 10:
+                    self.state.players[actor].hand.append(
+                        HandCard(self._entity_id(), attacker.card_id, cost_modifier=2)
+                    )
+                self._refresh_dynamic_attack_bonuses()
+                return True
+            if kind == "oasis_ally" and target.kind == "minion" and target.player == owner:
+                self.state.players[owner].secrets.remove(secret_id)
+                self._summon(owner, "CS2_033")
+            elif kind == "explosive_trap" and target.kind == "hero" and target.player == owner:
+                self.state.players[owner].secrets.remove(secret_id)
+                self._resolve_effect_sequence(
+                    owner,
+                    (Effect("damage_all", 2, target="enemy_characters"),),
+                    None,
+                    None,
+                    spell_damage_bonus=self._spell_damage(owner),
+                )
+                self._cleanup_deaths()
+                self._check_terminal()
+                if not self._attack_source_exists(attack_source):
+                    return True
+            elif kind == "ice_barrier" and target.kind == "hero" and target.player == owner:
+                self.state.players[owner].secrets.remove(secret_id)
+                self.state.players[owner].hero_armor += 8
+        return self.state.terminal or not self._attack_source_exists(attack_source)
+
+    def _first_secret(self, owner: int, kind: str) -> Optional[str]:
+        for secret_id in self.state.players[owner].secrets:
+            definition = self.cards.get(secret_id)
+            if definition is not None and definition.secret_kind == kind:
+                return secret_id
+        return None
+
+    def _attack_source_exists(self, source: TargetRef) -> bool:
+        if source.kind == "hero":
+            return self.state.players[source.player].hero_health > 0
+        try:
+            return self._find_minion(source.player, source.entity_id).health > 0
+        except IllegalAction:
+            return False
 
     def _activate_location(self, actor: int, action: Action) -> None:
         location = self._find_location(actor, action.source_id)
@@ -1653,6 +1771,13 @@ class Game:
         target = action.target
         if target is None:
             raise IllegalAction("attack requires target")
+        if self._before_attack_secrets(
+            actor,
+            TargetRef.minion(actor, attacker.entity_id),
+            target,
+        ):
+            return
+        attacker = self._find_minion(actor, action.source_id)
         self._resolve_board_triggers("attacks", owner=actor, only_entity=attacker.entity_id)
         attacker.attacks_this_turn += 1
         attacker.stealth = False
@@ -1719,6 +1844,8 @@ class Game:
         target = action.target
         if target is None:
             raise IllegalAction("hero attack requires target")
+        if self._before_attack_secrets(actor, TargetRef.hero(actor), target):
+            return
         player.hero_attacks_this_turn += 1
         defender_card_id: Optional[str] = None
         if target.kind == "minion":
@@ -2831,6 +2958,9 @@ class Game:
             "board": [asdict(minion) for minion in player.board],
             "weapon": asdict(player.weapon) if player.weapon is not None else None,
             "locations": [asdict(location) for location in player.locations],
+            "secrets": (
+                list(player.secrets) if include_hand else ["未知奥秘"] * len(player.secrets)
+            ),
         }
         if include_hand:
             data["hand"] = [asdict(card) for card in player.hand]
