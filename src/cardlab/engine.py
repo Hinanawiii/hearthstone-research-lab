@@ -187,6 +187,7 @@ class Game:
             raise IllegalAction("illegal action: {}".format(action.to_dict()))
         actor = self.state.active_player
         before = self.public_snapshot()
+        action = self._randomize_action_target(actor, action)
         if action.action_type == ActionType.END_TURN:
             self._end_turn()
         elif action.action_type == ActionType.PLAY:
@@ -297,6 +298,8 @@ class Game:
                 exclude_entity=played_minion.entity_id if played_minion else None,
                 played_races=card.races,
             )
+        if card.card_type == CardType.SPELL:
+            player.spells_played_this_turn.append(card.card_id)
         self._cleanup_deaths()
         self._check_terminal()
 
@@ -310,7 +313,11 @@ class Game:
         player.hand.remove(hand_card)
         self._draw(actor)
         insertion_index = self.rng.randrange(len(player.deck) + 1)
+        self._ensure_deck_origin_flags(player)
         player.deck.insert(insertion_index, hand_card.card_id)
+        player.deck_outside_starting.insert(
+            insertion_index, hand_card.outside_starting_deck
+        )
         self._check_terminal()
 
     def _resolve_discover(self, actor: int, action: Action) -> None:
@@ -332,7 +339,12 @@ class Game:
         self.state.pending_discover_heal_by_cost = False
         player = self.state.players[actor]
         if from_deck and chosen_card_id in player.deck:
-            player.deck.remove(chosen_card_id)
+            self._ensure_deck_origin_flags(player)
+            deck_index = player.deck.index(chosen_card_id)
+            player.deck.pop(deck_index)
+            chosen_outside_starting = player.deck_outside_starting.pop(deck_index)
+        else:
+            chosen_outside_starting = False
         if len(player.hand) < 10:
             player.hand.append(
                 HandCard(
@@ -340,6 +352,7 @@ class Game:
                     chosen_card_id,
                     attack_bonus=attack_bonus,
                     health_bonus=health_bonus,
+                    outside_starting_deck=chosen_outside_starting,
                 )
             )
         if heal_by_cost:
@@ -492,7 +505,10 @@ class Game:
                     ]
                     if not deck_candidates or len(player.board) >= 7:
                         break
-                    card_id = player.deck.pop(self.rng.choice(deck_candidates))
+                    self._ensure_deck_origin_flags(player)
+                    deck_index = self.rng.choice(deck_candidates)
+                    card_id = player.deck.pop(deck_index)
+                    player.deck_outside_starting.pop(deck_index)
                     summoned = self._summon(actor, card_id)
                     if summoned is None:
                         break
@@ -553,7 +569,10 @@ class Game:
                     ]
                     if not deck_candidates or len(player.board) >= 7:
                         break
-                    card_id = player.deck.pop(self.rng.choice(deck_candidates))
+                    self._ensure_deck_origin_flags(player)
+                    deck_index = self.rng.choice(deck_candidates)
+                    card_id = player.deck.pop(deck_index)
+                    player.deck_outside_starting.pop(deck_index)
                     summoned = self._summon(actor, card_id)
                     if summoned is not None:
                         summoned_entities.append(
@@ -588,8 +607,13 @@ class Game:
                         self._add_to_hand(actor, self.rng.choice(pool_card_ids))
             elif effect.kind == "shuffle_into_deck":
                 player = self.state.players[actor]
+                self._ensure_deck_origin_flags(player)
                 player.deck.extend(effect.card_id for _ in range(effect.amount))
-                self.rng.shuffle(player.deck)
+                player.deck_outside_starting.extend(True for _ in range(effect.amount))
+                shuffled = list(zip(player.deck, player.deck_outside_starting))
+                self.rng.shuffle(shuffled)
+                player.deck = [card_id for card_id, _ in shuffled]
+                player.deck_outside_starting = [flag for _, flag in shuffled]
             elif effect.kind == "discover_from_pool":
                 self._start_discover(actor, effect.card_ids)
             elif effect.kind == "discover_from_deck":
@@ -772,11 +796,14 @@ class Game:
                         break
                     player.hand.remove(self.rng.choice(player.hand))
             elif effect.kind == "remove_enemy_deck_top":
-                enemy_deck = self.state.players[1 - actor].deck
+                enemy_player = self.state.players[1 - actor]
+                enemy_deck = enemy_player.deck
+                self._ensure_deck_origin_flags(enemy_player)
                 for _ in range(effect.amount):
                     if not enemy_deck:
                         break
                     enemy_deck.pop()
+                    enemy_player.deck_outside_starting.pop()
             elif effect.kind == "draw_highest_cost_minion":
                 self._draw_filtered(
                     actor,
@@ -799,6 +826,24 @@ class Game:
                 enemy_deck = self.state.players[1 - actor].deck
                 if enemy_deck:
                     self._add_to_hand(actor, self.rng.choice(enemy_deck))
+            elif effect.kind == "destroy_outside_starting_deck":
+                for affected_player in self.state.players:
+                    self._ensure_deck_origin_flags(affected_player)
+                    kept = [
+                        (card_id, outside)
+                        for card_id, outside in zip(
+                            affected_player.deck,
+                            affected_player.deck_outside_starting,
+                        )
+                        if not outside
+                    ]
+                    affected_player.deck = [card_id for card_id, _ in kept]
+                    affected_player.deck_outside_starting = [
+                        outside for _, outside in kept
+                    ]
+            elif effect.kind == "return_previous_turn_spells":
+                for card_id in self.state.players[actor].spells_played_previous_turn:
+                    self._add_to_hand(actor, card_id)
             elif effect.kind == "equip_weapon":
                 self._equip_weapon(actor, effect.card_id)
             elif effect.kind == "destroy_enemy_weapon":
@@ -963,6 +1008,33 @@ class Game:
                         effect.attack,
                         effect.health,
                     )
+            elif effect.kind == "random_buff_distinct_races":
+                remaining = [
+                    minion
+                    for minion in self.state.players[actor].board
+                    if minion.health > 0
+                    and (played_minion is None or minion.entity_id != played_minion.entity_id)
+                ]
+                used_races = set()
+                for _ in range(effect.amount):
+                    eligible = [
+                        (minion, race)
+                        for minion in remaining
+                        for race in (minion.races or ("NO_RACE",))
+                        if race not in used_races
+                    ]
+                    if not eligible:
+                        break
+                    chosen, chosen_race = self.rng.choice(eligible)
+                    self._buff_minion(
+                        TargetRef.minion(actor, chosen.entity_id),
+                        effect.attack,
+                        effect.health,
+                    )
+                    used_races.add(chosen_race)
+                    remaining = [
+                        minion for minion in remaining if minion.entity_id != chosen.entity_id
+                    ]
             elif effect.kind == "random_grant_keywords_friendly":
                 candidates = [
                     minion
@@ -1214,6 +1286,57 @@ class Game:
             if minion.health > 0 and not minion.stealth
         ]
 
+    def _randomize_action_target(self, actor: int, action: Action) -> Action:
+        if action.target is None or not any(
+            definition is not None and definition.randomizes_character_targets
+            for player in self.state.players
+            for minion in player.board
+            if minion.health > 0
+            for definition in (self.cards.get(minion.card_id),)
+        ):
+            return action
+        candidates: List[TargetRef]
+        if action.action_type == ActionType.PLAY:
+            hand_card = self._find_hand_card(actor, action.source_id)
+            card = self.cards[hand_card.card_id]
+            candidates = self._valid_targets(
+                actor,
+                self._effective_target_mode(actor, card),
+                exclude_elusive=card.card_type == CardType.SPELL,
+                exclude_enemy_stealth=True,
+            )
+        elif action.action_type == ActionType.HERO_POWER:
+            candidates = self._valid_targets(
+                actor,
+                TargetMode.ANY_CHARACTER,
+                exclude_elusive=True,
+                exclude_enemy_stealth=True,
+            )
+        elif action.action_type == ActionType.ATTACK:
+            candidates = [TargetRef.hero(0), TargetRef.hero(1)] + [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0 and minion.entity_id != action.source_id
+            ]
+        elif action.action_type == ActionType.HERO_ATTACK:
+            candidates = [TargetRef.hero(1 - actor)] + [
+                TargetRef.minion(player_index, minion.entity_id)
+                for player_index, player in enumerate(self.state.players)
+                for minion in player.board
+                if minion.health > 0
+            ]
+        else:
+            return action
+        if not candidates:
+            return action
+        return Action(
+            action.action_type,
+            action.source_id,
+            self.rng.choice(candidates),
+            action.choice,
+        )
+
     def _attack(self, actor: int, action: Action) -> None:
         attacker = self._find_minion(actor, action.source_id)
         target = action.target
@@ -1332,6 +1455,8 @@ class Game:
         current.temporary_mana = 0
         current.overloaded_mana = 0
         current.friendly_undead_died_since_last_turn = False
+        current.spells_played_previous_turn = list(current.spells_played_this_turn)
+        current.spells_played_this_turn = []
         self.state.active_player = 1 - self.state.active_player
         self._start_turn(self.state.active_player)
 
@@ -1369,7 +1494,9 @@ class Game:
             self._damage(TargetRef.hero(player_index), player.fatigue)
             self._check_terminal()
             return
+        self._ensure_deck_origin_flags(player)
         card_id = player.deck.pop()
+        outside_starting = player.deck_outside_starting.pop()
         card = self.cards.get(card_id)
         if card is not None and card.casts_when_drawn:
             self._resolve_board_triggers("owner_draw", owner=player_index)
@@ -1379,13 +1506,29 @@ class Game:
             if not self.state.terminal:
                 self._draw(player_index)
             return
-        self._add_to_hand(player_index, card_id)
+        self._add_to_hand(
+            player_index,
+            card_id,
+            outside_starting_deck=outside_starting,
+        )
         self._resolve_board_triggers("owner_draw", owner=player_index)
 
-    def _add_to_hand(self, player_index: int, card_id: str) -> None:
+    def _add_to_hand(
+        self,
+        player_index: int,
+        card_id: str,
+        *,
+        outside_starting_deck: bool = False,
+    ) -> None:
         player = self.state.players[player_index]
         if len(player.hand) < 10:
-            player.hand.append(HandCard(self._entity_id(), card_id))
+            player.hand.append(
+                HandCard(
+                    self._entity_id(),
+                    card_id,
+                    outside_starting_deck=outside_starting_deck,
+                )
+            )
 
     def _draw_filtered(
         self,
@@ -1406,8 +1549,14 @@ class Game:
             highest = max(definition.cost for _, definition in candidates)
             candidates = [item for item in candidates if item[1].cost == highest]
         index, definition = self.rng.choice(candidates)
+        self._ensure_deck_origin_flags(player)
         player.deck.pop(index)
-        self._add_to_hand(player_index, definition.card_id)
+        outside_starting = player.deck_outside_starting.pop(index)
+        self._add_to_hand(
+            player_index,
+            definition.card_id,
+            outside_starting_deck=outside_starting,
+        )
         self._resolve_board_triggers("owner_draw", owner=player_index)
 
     @staticmethod
@@ -1422,6 +1571,15 @@ class Game:
         temporary = min(player.temporary_mana, amount)
         player.temporary_mana -= temporary
         player.mana -= amount - temporary
+
+    @staticmethod
+    def _ensure_deck_origin_flags(player: PlayerState) -> None:
+        if len(player.deck_outside_starting) < len(player.deck):
+            player.deck_outside_starting.extend(
+                False for _ in range(len(player.deck) - len(player.deck_outside_starting))
+            )
+        elif len(player.deck_outside_starting) > len(player.deck):
+            player.deck_outside_starting = player.deck_outside_starting[: len(player.deck)]
 
     @staticmethod
     def _is_outcast(player: PlayerState, hand_card: HandCard) -> bool:
@@ -2159,6 +2317,8 @@ class Game:
             "friendly_undead_died_since_last_turn": (
                 player.friendly_undead_died_since_last_turn
             ),
+            "spells_played_this_turn": list(player.spells_played_this_turn),
+            "spells_played_previous_turn": list(player.spells_played_previous_turn),
             "fatigue": player.fatigue,
             "hero_power_used": player.hero_power_used,
             "deck_count": len(player.deck),

@@ -124,6 +124,7 @@ class CardDef:
     weapon_attack_equals_armor: bool = False
     weapon_cannot_attack_heroes: bool = False
     prevents_hero_damage_by_losing_durability: bool = False
+    randomizes_character_targets: bool = False
 
 
 @dataclass
@@ -133,6 +134,7 @@ class HandCard:
     attack_bonus: int = 0
     health_bonus: int = 0
     cost_modifier: int = 0
+    outside_starting_deck: bool = False
 
 
 @dataclass
@@ -205,6 +207,7 @@ class PlayerState:
     fatigue: int = 0
     hero_power_used: bool = False
     deck: List[str] = field(default_factory=list)
+    deck_outside_starting: List[bool] = field(default_factory=list)
     hand: List[HandCard] = field(default_factory=list)
     board: List[Minion] = field(default_factory=list)
     weapon: Optional[Weapon] = None
@@ -215,6 +218,8 @@ class PlayerState:
     corpses: int = 0
     graveyard: List[str] = field(default_factory=list)
     friendly_undead_died_since_last_turn: bool = False
+    spells_played_this_turn: List[str] = field(default_factory=list)
+    spells_played_previous_turn: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

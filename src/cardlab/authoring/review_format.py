@@ -191,7 +191,13 @@ def _review_player(
         "history": {
             "friendly_undead_died_since_last_turn": bool(
                 player.get("friendly_undead_died_since_last_turn", False)
-            )
+            ),
+            "spells_played_this_turn": list(
+                player.get("spells_played_this_turn", [])
+            ),
+            "spells_played_previous_turn": list(
+                player.get("spells_played_previous_turn", [])
+            ),
         },
         "zones": {
             "hand": {
